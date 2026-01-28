@@ -1,6 +1,6 @@
 # Local LLM Configuration
 llm:
-  model_name: "mistralai/Mistral-7B-Instruct-v0.2"  # Or "meta-llama/Llama-2-7b-chat-hf"
+  model_name: "Qwen/Qwen3-4B"  # Qwen 3 4B model
   device: "cuda"  # Use "cpu" if no GPU available
   load_in_4bit: true  # 4-bit quantization (QLoRA) for maximum memory savings
   load_in_8bit: false  # Disabled in favor of 4-bit
