@@ -1,0 +1,38 @@
+# Conda Environment Setup for Natural Farming Chat
+# Save this as environment.yml
+
+name: farming-chat
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pytorch>=2.0.0
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1  # For CUDA 12.4 compatibility
+  
+  # Core dependencies
+  - pip
+  - numpy
+  - pandas
+  
+  # Install via pip (not available in conda or better via pip)
+  - pip:
+    - streamlit==1.31.0
+    - transformers==4.36.0
+    - sentence-transformers==2.3.1
+    - chromadb==0.4.22
+    - langchain==0.1.0
+    - langchain-community==0.0.10
+    - PyPDF2==3.0.0
+    - pypdf==3.17.4
+    - Pillow==10.2.0
+    - gTTS==2.5.0
+    - sympy==1.12
+    - python-dotenv==1.0.0
+    - PyYAML==6.0.1
+    - accelerate==0.25.0
+    - bitsandbytes==0.41.3

@@ -1,0 +1,36 @@
+# Local LLM Configuration
+llm:
+  model_name: "mistralai/Mistral-7B-Instruct-v0.2"  # Or "meta-llama/Llama-2-7b-chat-hf"
+  device: "cuda"  # Use "cpu" if no GPU available
+  load_in_4bit: true  # 4-bit quantization (QLoRA) for maximum memory savings
+  load_in_8bit: false  # Disabled in favor of 4-bit
+  max_length: 1024  # Reduced to save GPU memory
+  temperature: 0.7
+  
+# Embedding Model Configuration
+embeddings:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"  # Fast and efficient
+  # Alternative: "BAAI/bge-small-en-v1.5" (better quality)
+  device: "cpu"  # Moved to CPU to free GPU memory for LLM
+
+# Vector Store Configuration
+vector_store:
+  type: "chroma"
+  persist_directory: "./vector_store"
+  collection_name: "farming_docs"
+  
+# Chunking Configuration
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+  
+# Retrieval Configuration
+retrieval:
+  top_k: 3
+  similarity_threshold: 0.7
+
+# System Prompt
+master_prompt: |
+  You are a helpful farming assistant specializing in natural farming practices.
+  Answer questions based on the provided context. If you don't know the answer,
+  say so honestly. Provide practical, actionable advice when possible.
