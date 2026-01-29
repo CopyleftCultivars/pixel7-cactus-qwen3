@@ -1,8 +1,8 @@
 # Local LLM Configuration
 llm:
-  model_name: "Qwen/Qwen3-4B"  # Qwen 3 4B model
+  model_name: "Qwen/Qwen3-0.6B"  # Qwen 3 0.6B model (smaller, faster)
   device: "cuda"  # Use "cpu" if no GPU available
-  load_in_4bit: true  # 4-bit quantization (QLoRA) for maximum memory savings
+  load_in_4bit: false  # Disabled - 0.6B model is small enough without quantization
   load_in_8bit: false  # Disabled in favor of 4-bit
   max_length: 1024  # Reduced to save GPU memory
   temperature: 0.7
@@ -28,6 +28,10 @@ chunking:
 retrieval:
   top_k: 3
   similarity_threshold: 0.7
+
+# User Input Configuration
+user_input:
+  max_prompt_length: 500  # Maximum characters for user prompt
 
 # System Prompt
 master_prompt: |

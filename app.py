@@ -1,14 +1,12 @@
 import os
 import re
 import yaml
-from io import BytesIO
 import streamlit as st
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from PIL import Image
-from gtts import gTTS
 from sympy import sympify, simplify
 from dotenv import load_dotenv
 
@@ -158,8 +156,56 @@ def replace_tool_calls_with_results(text: str, tool_results: dict):
         if expression in tool_results:
             return f"**Calculation Result:** {tool_results[expression]}"
         return match.group(0)
-    
+
     return re.sub(r'<calculate>(.*?)</calculate>', replace_calc, text, flags=re.DOTALL)
+
+def clean_response(response: str) -> str:
+    """Clean the response to remove any leaked prompt content and thinking."""
+    cleaned = response
+
+    # Remove Qwen3 thinking tags and content
+    cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL)
+
+    # Remove prompt structure tags
+    cleaned = re.sub(r'\[/?CONTEXT\]', '', cleaned)
+    cleaned = re.sub(r'\[/?QUESTION\]', '', cleaned)
+    cleaned = re.sub(r'\[/?ANSWER\]', '', cleaned)
+
+    # Common patterns that indicate prompt leakage (stop at paragraph breaks)
+    leak_patterns = [
+        r'Previous conversation:.*?(?=\n\n|\Z)',
+        r'Relevant knowledge:.*?(?=\n\n|\Z)',
+        r'Current question:.*?(?=\n\n|\Z)',
+        r'Please provide a helpful.*?(?=\n\n|\Z)',
+        r'AGENTIC MODE:.*?(?=\n\n|\Z)',
+        r'(You are|I am) a helpful farming assistant[^\n]*',
+        r'USER:.*?ASSISTANT:',
+    ]
+
+    for pattern in leak_patterns:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+
+    # Qwen3 reasoning patterns - truncate everything from these onwards
+    reasoning_starts = [
+        r"\n\s*Okay, let's see",
+        r"\n\s*Let me think",
+        r"\n\s*Wait, (the user|I should|maybe)",
+        r"\n\s*My job is to",
+        r"\n\s*I need to recall",
+        r"\n\s*First, I need to",
+    ]
+    for pattern in reasoning_starts:
+        match = re.search(pattern, cleaned, flags=re.IGNORECASE)
+        if match:
+            cleaned = cleaned[:match.start()]
+
+    # Remove any remaining prompt structure markers
+    cleaned = re.sub(r'^(ASSISTANT:|AI:|Response:)\s*', '', cleaned.strip(), flags=re.IGNORECASE)
+
+    # Clean up excessive whitespace
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+
+    return cleaned.strip()
 
 # --- Core Generation Logic ---
 
@@ -197,14 +243,7 @@ def generate_response_logic(question, vectorstore, llm_pipeline, agentic_mode=Fa
         top_k=config['retrieval']['top_k']
     )
     
-    # 2. Build conversation context
-    recent_messages = st.session_state.messages[-5:]
-    conversation_context = "\n".join([
-        f"{m['role'].upper()}: {m['content']}" 
-        for m in recent_messages
-    ])
-    
-    # 3. Build system prompt
+    # 2. Build system prompt
     system_prompt = config['master_prompt']
     
     if agentic_mode:
@@ -213,41 +252,42 @@ You have access to a calculator. Use <calculate>expression</calculate> for math.
 I will parse this tag, run the math, and return the result.
 Make multiple iterations if necessary."""
     
-    # 4. Build full prompt
-    full_prompt = f"""{system_prompt}
-
-Previous conversation:
-{conversation_context}
-
-Relevant knowledge:
-{retrieved_context}
-
-Current question: {question}
-
-Please provide a helpful, accurate answer based on the context above."""
-    
-    # 5. Iterative generation with tool use
+    # 4. Iterative generation with tool use
     current_iteration = 0
-    accumulated_prompt = full_prompt
     tool_results_history = {}
     final_response_text = ""
-    
+
+    # Build initial chat messages for Qwen3 formatting
+    system_content = f"{system_prompt}\n\nRelevant Context:\n{retrieved_context}"
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": question},
+    ]
+
     while current_iteration < max_iterations:
         try:
+            # Apply chat template with thinking disabled
+            formatted_prompt = llm_pipeline.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False
+            )
+
             # Generate response
             outputs = llm_pipeline(
-                accumulated_prompt,
-                max_new_tokens=256,  # Reduced to save GPU memory
-                return_full_text=False
+                formatted_prompt,
+                max_new_tokens=512,
+                return_full_text=False,
             )
-            
+
             response_text = outputs[0]['generated_text'].strip()
             final_response_text = response_text
-            
+
             # Check for tool calls in agentic mode
             if agentic_mode:
                 tool_calls = extract_tool_calls(response_text)
-                
+
                 if tool_calls:
                     iteration_results = {}
                     for tool_name, tool_input in tool_calls:
@@ -255,14 +295,15 @@ Please provide a helpful, accurate answer based on the context above."""
                             res = calculator_tool(tool_input)
                             iteration_results[tool_input] = res
                             tool_results_history[tool_input] = res
-                    
+
                     if iteration_results:
-                        # Append results and continue
+                        # Add assistant response and tool results to conversation
                         tool_output_str = "\n".join([
-                            f"Calculation: {k} = {v}" 
+                            f"Calculation: {k} = {v}"
                             for k, v in iteration_results.items()
                         ])
-                        accumulated_prompt += f"\n\nAI partial response: {response_text}\nSystem Tool Output:\n{tool_output_str}\nPlease continue."
+                        messages.append({"role": "assistant", "content": response_text})
+                        messages.append({"role": "user", "content": f"Tool Output:\n{tool_output_str}\nPlease continue."})
                         current_iteration += 1
                         continue
             
@@ -278,7 +319,10 @@ Please provide a helpful, accurate answer based on the context above."""
             final_response_text,
             tool_results_history
         )
-    
+
+    # Clean response to remove any leaked prompt content
+    final_response_text = clean_response(final_response_text)
+
     return final_response_text
 
 # --- Main UI ---
@@ -351,7 +395,14 @@ def launch_bot():
             st.write(message["content"])
     
     # Chat input
+    max_prompt_length = config.get('user_input', {}).get('max_prompt_length', 500)
+
     if prompt := st.chat_input("Ask about natural farming..."):
+        # Enforce prompt length limit
+        if len(prompt) > max_prompt_length:
+            prompt = prompt[:max_prompt_length]
+            st.warning(f"Your message was truncated to {max_prompt_length} characters.")
+
         # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -371,16 +422,6 @@ def launch_bot():
                 st.session_state.messages.append(
                     {"role": "assistant", "content": response_text}
                 )
-                
-                # Audio generation (optional)
-                with st.expander("🔊 Audio Response"):
-                    try:
-                        sound_file = BytesIO()
-                        tts = gTTS(response_text, lang='en')
-                        tts.write_to_fp(sound_file)
-                        st.audio(sound_file)
-                    except Exception as e:
-                        st.warning(f"Audio generation failed: {str(e)}")
 
 if __name__ == "__main__":
     launch_bot()
