@@ -11,4 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 ### Changed
+- Implement CactusLM model loading and initialization (#4)
+- Configure Android manifest and permissions (#3)
 - Install Flutter SDK and set up development environment (#2)
