@@ -19,6 +19,10 @@ say so honestly. Provide practical, actionable advice when possible.''';
   double get downloadProgress => _downloadProgress;
   String get downloadStatus => _downloadStatus;
 
+  /// Get the underlying CactusLM instance for use by RagService
+  /// Returns null if model is not downloaded yet
+  CactusLM? get lm => _lm;
+
   /// Download the model with progress callback
   Future<void> downloadModel({
     required void Function(double progress, String status) onProgress,
@@ -193,6 +197,58 @@ Make multiple iterations if necessary.''';
     cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
 
     return cleaned.trim();
+  }
+
+  /// Combined initialize method - downloads and initializes the model
+  Future<void> initialize({
+    required void Function(double progress, String status) onProgress,
+  }) async {
+    if (_isInitialized) return;
+
+    // Download model if not already downloaded
+    await downloadModel(onProgress: onProgress);
+
+    // Initialize model for inference
+    onProgress(0.95, 'Initializing inference engine...');
+    await initializeModel();
+
+    onProgress(1.0, 'Model ready');
+  }
+
+  /// Generate text with streaming via callback
+  Future<void> generate({
+    required String prompt,
+    required void Function(String token) onToken,
+    int maxTokens = 512,
+  }) async {
+    if (!_isInitialized) {
+      throw ModelServiceException('Model not initialized. Call initialize first.');
+    }
+
+    // Use simple completion for prompt-based generation
+    final messages = [
+      ChatMessage(content: prompt, role: 'user'),
+    ];
+
+    final streamedResult = await _lm!.generateCompletionStream(
+      messages: messages,
+      params: CactusCompletionParams(maxTokens: maxTokens),
+    );
+
+    await for (final token in streamedResult.stream) {
+      onToken(token);
+    }
+  }
+
+  /// Get device info - returns basic info about the model/device
+  Future<Map<String, String>> getDeviceInfo() async {
+    // CactusLM doesn't expose a public getDeviceInfo API
+    // Return what we know from our configuration
+    return {
+      'device': 'Mobile (on-device inference)',
+      'model': modelSlug,
+      'status': _isInitialized ? 'Ready' : 'Not initialized',
+    };
   }
 
   /// Unload the model and free resources
