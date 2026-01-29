@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'services/model_service.dart';
 import 'services/rag_service.dart';
 import 'services/calculator_service.dart';
@@ -44,6 +46,20 @@ class ChatMessage {
     required this.isUser,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
+
+  /// Convert to JSON for persistence
+  Map<String, dynamic> toJson() => {
+        'content': content,
+        'isUser': isUser,
+        'timestamp': timestamp.toIso8601String(),
+      };
+
+  /// Create from JSON
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+        content: json['content'] as String,
+        isUser: json['isUser'] as bool,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+      );
 }
 
 /// Main chat screen
@@ -70,10 +86,60 @@ class _ChatScreenState extends State<ChatScreen> {
   double _initProgress = 0.0;
   String? _deviceInfo;
 
+  // Persistence keys
+  static const String _chatHistoryKey = 'chat_history';
+  static const String _agenticModeKey = 'agentic_mode';
+
   @override
   void initState() {
     super.initState();
+    _loadPersistedSettings();
     _initializeServices();
+  }
+
+  /// Load persisted settings from SharedPreferences
+  Future<void> _loadPersistedSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Load agentic mode setting
+    final savedAgenticMode = prefs.getBool(_agenticModeKey);
+    if (savedAgenticMode != null) {
+      setState(() {
+        _agenticMode = savedAgenticMode;
+      });
+    }
+
+    // Load chat history
+    final savedHistory = prefs.getString(_chatHistoryKey);
+    if (savedHistory != null) {
+      try {
+        final List<dynamic> jsonList = jsonDecode(savedHistory);
+        final loadedMessages = jsonList
+            .map((json) => ChatMessage.fromJson(json as Map<String, dynamic>))
+            .toList();
+        if (loadedMessages.isNotEmpty) {
+          setState(() {
+            _messages.clear();
+            _messages.addAll(loadedMessages);
+          });
+        }
+      } catch (e) {
+        // Ignore invalid saved data
+      }
+    }
+  }
+
+  /// Save chat history to SharedPreferences
+  Future<void> _saveChatHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = _messages.map((m) => m.toJson()).toList();
+    await prefs.setString(_chatHistoryKey, jsonEncode(jsonList));
+  }
+
+  /// Save agentic mode setting
+  Future<void> _saveAgenticMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_agenticModeKey, _agenticMode);
   }
 
   Future<void> _initializeServices() async {
@@ -112,12 +178,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
       setState(() {
         _isInitialized = true;
-        _messages.add(ChatMessage(
-          content: 'Hello! I\'m your Natural Farming assistant. '
-              'Ask me anything about organic farming, composting, '
-              'fermented plant juice, or nutrient requirements for plants.',
-          isUser: false,
-        ));
+        // Only add welcome message if no history was loaded
+        if (_messages.isEmpty) {
+          _messages.add(ChatMessage(
+            content: 'Hello! I\'m your Natural Farming assistant. '
+                'Ask me anything about organic farming, composting, '
+                'fermented plant juice, or nutrient requirements for plants.',
+            isUser: false,
+          ));
+        }
       });
     } catch (e) {
       setState(() {
@@ -165,6 +234,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.add(ChatMessage(content: response, isUser: false));
         _isLoading = false;
       });
+      _saveChatHistory();
     } catch (e) {
       setState(() {
         _messages.add(ChatMessage(
@@ -173,6 +243,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ));
         _isLoading = false;
       });
+      _saveChatHistory();
     }
 
     _scrollToBottom();
@@ -238,6 +309,7 @@ Keep responses concise and actionable.''';
         isUser: false,
       ));
     });
+    _saveChatHistory();
   }
 
   @override
@@ -365,6 +437,7 @@ Keep responses concise and actionable.''';
               setState(() {
                 _agenticMode = value;
               });
+              _saveAgenticMode();
               Navigator.pop(context);
             },
           ),
