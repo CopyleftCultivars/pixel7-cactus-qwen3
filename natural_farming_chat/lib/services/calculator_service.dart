@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-/// Service for safe mathematical expression evaluation
-/// Used in agentic mode to process <calculate> tags
+/// Service for safe mathematical expression evaluation.
+/// Used in agentic mode to process `<calculate>` tags.
 class CalculatorService {
   /// Evaluate a mathematical expression safely
   /// Returns the result as a string, or an error message
@@ -26,7 +26,7 @@ class CalculatorService {
     }
   }
 
-  /// Extract all <calculate> tags from text
+  /// Extract all `<calculate>` tags from text.
   List<CalculatorMatch> extractTags(String text) {
     final pattern = RegExp(r'<calculate>(.*?)</calculate>', dotAll: true);
     final matches = pattern.allMatches(text);
@@ -39,7 +39,7 @@ class CalculatorService {
     )).toList();
   }
 
-  /// Replace <calculate> tags with their results
+  /// Replace `<calculate>` tags with their results.
   String processResponse(String response) {
     final tags = extractTags(response);
     if (tags.isEmpty) return response;
@@ -63,7 +63,7 @@ class CalculatorService {
   }
 }
 
-/// Represents a matched <calculate> tag
+/// Represents a matched `<calculate>` tag.
 class CalculatorMatch {
   final String fullMatch;
   final String expression;
