@@ -38,6 +38,12 @@ dependencies:
   shared_preferences: ^2.2.0
   crypto: ^3.0.3
   path_provider: ^2.1.2
+  path: ^1.8.0
+
+  # ObjectBox for direct database access (same schema as preprocessor)
+  objectbox: ^5.0.4
+  objectbox_flutter_libs: ^5.0.4
+  flat_buffers: ^23.5.26
 
 dev_dependencies:
   flutter_test:
@@ -61,9 +67,9 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Knowledge base assets for RAG
+  # Pre-built RAG database
   assets:
-    - assets/knowledge/
+    - assets/rag_db/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

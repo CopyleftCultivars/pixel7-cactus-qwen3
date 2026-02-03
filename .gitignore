@@ -1,2 +1,45 @@
 vector_store
 data
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Large model files (download separately)
+models/
+*.gguf
+
+# Dart/Flutter build artifacts
+.dart_tool/
+.packages
+build/
+
+# ObjectBox preprocessor build artifacts
+cactus_rag_preprocessor/.dart_tool/
+cactus_rag_preprocessor/download/
+cactus_rag_preprocessor/objectbox_output/
+cactus_rag_preprocessor/lib/libobjectbox.so
+
+# Pre-built RAG database (80MB, regenerate with preprocessor)
+natural_farming_chat/assets/rag_db/
+
+# Precomputed embeddings (regenerate with generate_embeddings.py)
+precomputed_embeddings/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Chainlink local database
+.chainlink/issues.db

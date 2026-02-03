@@ -1,155 +1,143 @@
-import 'dart:convert';
-import 'dart:developer' as developer;
 import 'dart:io';
 
-import 'package:cactus/cactus.dart';
-import 'package:crypto/crypto.dart';
+import 'package:cactus/cactus.dart' show CactusLM;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+import '../models/document.dart';
+import '../models/document_chunk.dart';
+import '../objectbox.g.dart';
 
 /// Service for managing RAG (Retrieval-Augmented Generation) operations
-/// using CactusRAG with ObjectBox vector storage.
+/// using direct ObjectBox access with a pre-built database.
+///
+/// This uses the same ObjectBox schema as cactus_rag_preprocessor to ensure
+/// database compatibility with pre-computed embeddings.
 class RagService {
-  CactusRAG? _rag;
+  Store? _store;
+  Box<Document>? _documentBox;
+  Box<DocumentChunk>? _chunkBox;
   CactusLM? _lm;
   bool _isInitialized = false;
   bool _documentsLoaded = false;
 
-  /// Cache for pre-computed embeddings (keyed by content hash)
-  final Map<String, List<double>> _embeddingCache = {};
-  bool _precomputedEmbeddingsLoaded = false;
-  int _cacheHits = 0;
-  int _cacheMisses = 0;
-
-  /// Chunking configuration matching Python app settings
-  static const int chunkSize = 1000;
-  static const int chunkOverlap = 200;
-
   /// Search configuration
   static const int defaultTopK = 3;
-  static const double maxDistance = 1.5; // Lower = more similar (squared Euclidean)
+  static const double maxDistance = 1.5;
 
-  /// Path for pre-computed embeddings file (pushed via ADB)
-  static const String precomputedEmbeddingsFileName = 'embeddings_precomputed.json';
+  /// Asset path for pre-built database
+  static const String prebuiltDbAsset = 'assets/rag_db/data.mdb';
 
   bool get isInitialized => _isInitialized;
   bool get documentsLoaded => _documentsLoaded;
-  bool get precomputedEmbeddingsLoaded => _precomputedEmbeddingsLoaded;
-  int get embeddingCacheHits => _cacheHits;
-  int get embeddingCacheMisses => _cacheMisses;
 
-  /// Initialize the RAG service with a reference to CactusLM for embeddings
+  /// Initialize the RAG service with a reference to CactusLM for query embeddings
   Future<void> initialize(CactusLM lm) async {
     if (_isInitialized) return;
 
     _lm = lm;
-    _rag = CactusRAG();
-    await _rag!.initialize();
 
-    // Configure embedding generator with caching support
-    _rag!.setEmbeddingGenerator(_cachedEmbeddingGenerator);
+    // Extract pre-built database from assets BEFORE ObjectBox initializes
+    final dbPath = await _extractPrebuiltDatabase();
 
-    // Configure chunking to match Python app settings
-    _rag!.setChunking(chunkSize: chunkSize, chunkOverlap: chunkOverlap);
+    // Open ObjectBox store with the same model as the preprocessor
+    print('[RAG] === Opening ObjectBox Store ===');
+    print('[RAG] Opening store at: $dbPath');
 
-    _isInitialized = true;
-  }
-
-  /// Embedding generator that checks cache before generating on-device
-  Future<List<double>> _cachedEmbeddingGenerator(String text) async {
-    // Compute hash of the text content
-    final contentHash = _computeContentHash(text);
-
-    // Check if we have a pre-computed embedding
-    if (_embeddingCache.containsKey(contentHash)) {
-      _cacheHits++;
-      developer.log(
-        'Cache HIT for hash $contentHash (hits: $_cacheHits, misses: $_cacheMisses)',
-        name: 'RagService.cache',
-      );
-      return _embeddingCache[contentHash]!;
+    try {
+      _store = Store(getObjectBoxModel(), directory: dbPath);
+      print('[RAG] Store opened successfully');
+    } catch (e, stackTrace) {
+      print('[RAG] ERROR opening store: $e');
+      print('[RAG] Stack trace: $stackTrace');
+      rethrow;
     }
 
-    // Generate embedding on-device
-    _cacheMisses++;
-    developer.log(
-      'Cache MISS for hash $contentHash - generating on-device (hits: $_cacheHits, misses: $_cacheMisses)',
-      name: 'RagService.cache',
-    );
+    print('[RAG] Creating Document box...');
+    _documentBox = Box<Document>(_store!);
+    print('[RAG] Document box created');
 
+    print('[RAG] Creating DocumentChunk box...');
+    _chunkBox = Box<DocumentChunk>(_store!);
+    print('[RAG] DocumentChunk box created');
+
+    // Immediately check counts after box creation
+    print('[RAG] === Immediate Box Check ===');
+    print('[RAG] Document count: ${_documentBox!.count()}');
+    print('[RAG] Chunk count: ${_chunkBox!.count()}');
+
+    _isInitialized = true;
+    print('[RAG] ObjectBox store opened at $dbPath');
+  }
+
+  /// Generate embedding for search queries using on-device model
+  Future<List<double>> _generateQueryEmbedding(String text) async {
     final result = await _lm!.generateEmbedding(text: text);
     return result.embeddings;
   }
 
-  /// Compute SHA256 hash of content (first 16 chars)
-  String _computeContentHash(String content) {
-    final bytes = utf8.encode(content);
-    final digest = sha256.convert(bytes);
-    return digest.toString().substring(0, 16);
-  }
+  /// Minimum expected database size in bytes (10MB).
+  /// If existing database is smaller, it's likely stale/empty and needs re-extraction.
+  static const int _minExpectedDbSize = 10 * 1024 * 1024;
 
-  /// Load pre-computed embeddings from file on device.
-  /// Call this after initialize() but before loadKnowledgeBase().
-  /// Returns true if pre-computed embeddings were loaded successfully.
-  Future<bool> loadPrecomputedEmbeddings() async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/$precomputedEmbeddingsFileName');
+  /// Extract pre-built ObjectBox database from assets and return the database path.
+  /// Returns the directory path where ObjectBox data is stored.
+  Future<String> _extractPrebuiltDatabase() async {
+    print('[RAG] === Database Extraction ===');
+    final appDir = await getApplicationDocumentsDirectory();
+    final objectboxDir = Directory(p.join(appDir.path, 'objectbox'));
+    final dataMdbFile = File(p.join(objectboxDir.path, 'data.mdb'));
 
-      if (!await file.exists()) {
-        developer.log(
-          'Pre-computed embeddings file not found at ${file.path}',
-          name: 'RagService.precompute',
-        );
-        return false;
+    print('[RAG] App documents dir: ${appDir.path}');
+    print('[RAG] Target objectbox dir: ${objectboxDir.path}');
+    print('[RAG] Target data.mdb path: ${dataMdbFile.path}');
+
+    bool needsExtraction = !await dataMdbFile.exists();
+
+    // Check if existing database is too small (likely stale/empty from previous run)
+    if (!needsExtraction) {
+      final existingSize = await dataMdbFile.length();
+      final existingSizeMB = (existingSize / 1024 / 1024).toStringAsFixed(2);
+      print('[RAG] Existing data.mdb size: $existingSizeMB MB');
+
+      if (existingSize < _minExpectedDbSize) {
+        print('[RAG] Database too small (< 10MB), likely stale. Deleting and re-extracting...');
+        await dataMdbFile.delete();
+        // Also delete lock.mdb if present
+        final lockFile = File(p.join(objectboxDir.path, 'lock.mdb'));
+        if (await lockFile.exists()) {
+          await lockFile.delete();
+        }
+        needsExtraction = true;
       }
-
-      developer.log(
-        'Loading pre-computed embeddings from ${file.path}',
-        name: 'RagService.precompute',
-      );
-
-      final jsonString = await file.readAsString();
-      final data = jsonDecode(jsonString) as Map<String, dynamic>;
-
-      // Validate structure
-      if (!data.containsKey('chunks')) {
-        developer.log(
-          'Invalid embeddings file: missing "chunks" key',
-          name: 'RagService.precompute',
-        );
-        return false;
-      }
-
-      final chunks = data['chunks'] as List<dynamic>;
-      _embeddingCache.clear();
-
-      for (final chunk in chunks) {
-        final chunkMap = chunk as Map<String, dynamic>;
-        final contentHash = chunkMap['content_hash'] as String;
-        final embeddingList = chunkMap['embedding'] as List<dynamic>;
-        final embedding = embeddingList.cast<num>().map((n) => n.toDouble()).toList();
-
-        _embeddingCache[contentHash] = embedding;
-      }
-
-      _precomputedEmbeddingsLoaded = true;
-      developer.log(
-        'Loaded ${_embeddingCache.length} pre-computed embeddings',
-        name: 'RagService.precompute',
-      );
-
-      return true;
-    } catch (e) {
-      developer.log(
-        'Error loading pre-computed embeddings: $e',
-        name: 'RagService.precompute',
-      );
-      return false;
     }
+
+    if (needsExtraction) {
+      print('[RAG] Extracting pre-built database from assets...');
+
+      // Create directory
+      if (!await objectboxDir.exists()) {
+        await objectboxDir.create(recursive: true);
+      }
+
+      // Load from assets and write to file
+      final assetData = await rootBundle.load(prebuiltDbAsset);
+      final bytes = assetData.buffer.asUint8List();
+      await dataMdbFile.writeAsBytes(bytes);
+
+      final sizeMB = (bytes.length / 1024 / 1024).toStringAsFixed(2);
+      print('[RAG] Extracted database: $sizeMB MB to ${objectboxDir.path}');
+    } else {
+      final size = await dataMdbFile.length();
+      final sizeMB = (size / 1024 / 1024).toStringAsFixed(2);
+      print('[RAG] Using existing database at ${objectboxDir.path}, size: $sizeMB MB');
+    }
+
+    return objectboxDir.path;
   }
 
-  /// Load the knowledge base from bundled assets
+  /// Load the knowledge base (marks as ready since data is pre-built)
   Future<void> loadKnowledgeBase({
     required void Function(double progress, String status) onProgress,
   }) async {
@@ -162,30 +150,33 @@ class RagService {
       return;
     }
 
-    onProgress(0.0, 'Loading knowledge base...');
+    onProgress(0.5, 'Loading pre-built knowledge base...');
 
-    // Check if documents are already stored
-    final existingDocs = await _rag!.getAllDocuments();
-    if (existingDocs.isNotEmpty) {
-      _documentsLoaded = true;
-      onProgress(1.0, 'Knowledge base ready (${existingDocs.length} documents)');
-      return;
+    print('[RAG] === Loading Knowledge Base ===');
+
+    // Verify documents exist in pre-built database
+    final docs = _documentBox!.getAll();
+    print('[RAG] Document count from getAll(): ${docs.length}');
+
+    if (docs.isNotEmpty) {
+      print('[RAG] First doc fileName: ${docs.first.fileName}');
+      print('[RAG] First doc id: ${docs.first.id}');
     }
 
-    // Load from bundled asset
-    onProgress(0.1, 'Reading knowledge base file...');
-    final content = await rootBundle.loadString('assets/knowledge/nutrients_knowledge.md');
-
-    onProgress(0.3, 'Processing and chunking document...');
-    await _rag!.storeDocument(
-      fileName: 'nutrients_knowledge.md',
-      filePath: 'assets/knowledge/nutrients_knowledge.md',
-      content: content,
-      fileSize: content.length,
-    );
+    if (docs.isEmpty) {
+      print('[RAG] WARNING: No documents found in database!');
+      print('[RAG] Checking chunk count directly...');
+      final chunkCount = _chunkBox!.count();
+      print('[RAG] Chunk count: $chunkCount');
+      throw RagServiceException(
+        'Pre-built database is empty. Ensure data.mdb was extracted correctly.',
+      );
+    }
 
     _documentsLoaded = true;
-    onProgress(1.0, 'Knowledge base loaded successfully');
+    final chunkCount = _chunkBox!.count();
+    onProgress(1.0, 'Knowledge base ready (${docs.length} docs, $chunkCount chunks)');
+    print('[RAG] Loaded ${docs.length} documents with $chunkCount chunks');
   }
 
   /// Search for relevant context given a query
@@ -195,19 +186,27 @@ class RagService {
     }
 
     if (!_documentsLoaded) {
-      return ''; // No context available yet
+      return '';
     }
 
-    final results = await _rag!.search(text: query, limit: defaultTopK);
+    // Generate embedding for the query
+    final queryEmbedding = await _generateQueryEmbedding(query);
+
+    // Use ObjectBox's native HNSW vector search
+    final searchQuery = _chunkBox!
+        .query(DocumentChunk_.embeddings.nearestNeighborsF32(queryEmbedding, defaultTopK))
+        .build();
+
+    final results = searchQuery.findWithScores();
+    searchQuery.close();
 
     if (results.isEmpty) {
       return '';
     }
 
-    // Filter by distance threshold and combine relevant chunks
     final relevantChunks = results
-        .where((result) => result.distance <= maxDistance)
-        .map((result) => result.chunk.content)
+        .where((result) => result.score <= maxDistance)
+        .map((result) => result.object.content)
         .toList();
 
     if (relevantChunks.isEmpty) {
@@ -227,134 +226,41 @@ class RagService {
       return [];
     }
 
-    final results = await _rag!.search(text: query, limit: limit ?? defaultTopK);
+    // Generate embedding for the query
+    final queryEmbedding = await _generateQueryEmbedding(query);
+
+    // Use ObjectBox's native HNSW vector search
+    final searchQuery = _chunkBox!
+        .query(DocumentChunk_.embeddings.nearestNeighborsF32(queryEmbedding, limit ?? defaultTopK))
+        .build();
+
+    final results = searchQuery.findWithScores();
+    searchQuery.close();
 
     return results
-        .where((result) => result.distance <= maxDistance)
+        .where((result) => result.score <= maxDistance)
         .map((result) => SearchResult(
-              content: result.chunk.content,
-              distance: result.distance,
+              content: result.object.content,
+              distance: result.score,
             ))
         .toList();
-  }
-
-  /// Store a custom document (for user-added knowledge)
-  Future<void> storeDocument({
-    required String fileName,
-    required String content,
-  }) async {
-    if (!_isInitialized) {
-      throw RagServiceException('RAG not initialized. Call initialize first.');
-    }
-
-    await _rag!.storeDocument(
-      fileName: fileName,
-      filePath: fileName,
-      content: content,
-      fileSize: content.length,
-    );
   }
 
   /// Get count of stored documents
   Future<int> getDocumentCount() async {
     if (!_isInitialized) return 0;
-    final docs = await _rag!.getAllDocuments();
-    return docs.length;
-  }
-
-  /// Clear all stored documents (useful for reindexing)
-  Future<void> clearDocuments() async {
-    if (!_isInitialized) return;
-    final docs = await _rag!.getAllDocuments();
-    for (final doc in docs) {
-      await _rag!.deleteDocument(doc.id);
-    }
-    _documentsLoaded = false;
+    return _documentBox!.count();
   }
 
   /// Release resources
   Future<void> dispose() async {
-    if (_rag != null) {
-      await _rag!.close();
-    }
-    _rag = null;
+    _store?.close();
+    _store = null;
+    _documentBox = null;
+    _chunkBox = null;
     _lm = null;
     _isInitialized = false;
     _documentsLoaded = false;
-  }
-
-  // ============================================================
-  // DEBUG METHODS - For embedding compatibility testing
-  // ============================================================
-
-  /// Test phrases for embedding comparison with host-side generator
-  static const List<String> debugTestPhrases = [
-    'What is nitrogen fixation?',
-    'How do I make compost tea?',
-    'natural farming fertilizer',
-    'potassium deficiency symptoms',
-  ];
-
-  /// Generate embedding for a single text and return raw values.
-  /// Used for debugging and comparing with host-side embeddings.
-  Future<EmbeddingDebugResult> generateEmbeddingDebug(String text) async {
-    if (!_isInitialized || _lm == null) {
-      throw RagServiceException('RAG not initialized. Call initialize first.');
-    }
-
-    final result = await _lm!.generateEmbedding(text: text);
-    final embeddings = result.embeddings;
-
-    developer.log(
-      'Embedding generated: dim=${embeddings.length}, '
-      'first5=${embeddings.take(5).toList()}, '
-      'last5=${embeddings.skip(embeddings.length - 5).toList()}',
-      name: 'RagService.debug',
-    );
-
-    return EmbeddingDebugResult(
-      text: text,
-      embedding: embeddings,
-      dimension: embeddings.length,
-    );
-  }
-
-  /// Generate embeddings for all test phrases and return as JSON string.
-  /// Copy this output to embeddings_cactus.json for comparison with
-  /// the host-side llama-cpp-python embeddings.
-  Future<String> exportEmbeddingsJson() async {
-    if (!_isInitialized || _lm == null) {
-      throw RagServiceException('RAG not initialized. Call initialize first.');
-    }
-
-    developer.log('Starting embedding export...', name: 'RagService.debug');
-
-    final results = <Map<String, dynamic>>[];
-
-    for (final phrase in debugTestPhrases) {
-      developer.log('Generating embedding for: $phrase', name: 'RagService.debug');
-      final result = await generateEmbeddingDebug(phrase);
-      results.add({
-        'text': result.text,
-        'dimension': result.dimension,
-        'embedding': result.embedding,
-      });
-    }
-
-    final output = {
-      'generator': 'CactusLM',
-      'model': 'qwen3-0.6',
-      'embeddings': results,
-    };
-
-    final jsonString = const JsonEncoder.withIndent('  ').convert(output);
-
-    developer.log(
-      'Export complete. JSON length: ${jsonString.length}',
-      name: 'RagService.debug',
-    );
-
-    return jsonString;
   }
 }
 
@@ -368,22 +274,7 @@ class SearchResult {
     required this.distance,
   });
 
-  /// Convenience getter for similarity score (inverted distance)
-  /// Higher = more similar
   double get similarity => 1.0 / (1.0 + distance);
-}
-
-/// Debug result containing raw embedding data for comparison testing
-class EmbeddingDebugResult {
-  final String text;
-  final List<double> embedding;
-  final int dimension;
-
-  EmbeddingDebugResult({
-    required this.text,
-    required this.embedding,
-    required this.dimension,
-  });
 }
 
 /// Exception thrown by RagService

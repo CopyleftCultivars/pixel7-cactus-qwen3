@@ -158,7 +158,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final deviceInfo = await _modelService.getDeviceInfo();
       _deviceInfo = deviceInfo['device'] ?? 'Unknown';
 
-      // Initialize RAG with the model
+      // Initialize RAG with the model (extracts pre-built database from assets)
       await _ragService.initialize(_modelService.lm!);
 
       setState(() {
