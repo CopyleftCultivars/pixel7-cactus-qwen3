@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 ### Changed
+- Convert Natural Farming Chat to Flutter Android App (#1)
+- Test on Pixel 7 device (#11)
+- Fix RAG to use pre-computed embeddings without re-chunking on device (#21)
 - Fix RAG to load pre-computed embeddings via CactusRAG API instead of ObjectBox database (#27)
 - Add ADB script to push pre-built RAG database to device (#14)
 - Add pre-computed RAG index to speed up first launch (#13)
