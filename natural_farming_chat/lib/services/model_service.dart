@@ -8,11 +8,59 @@ class ModelService {
   double _downloadProgress = 0.0;
   String _downloadStatus = '';
 
+  /// Default maximum tokens for completions (increased from 512 to prevent truncation)
+  static const int defaultMaxTokens = 2048;
+
   static const String modelSlug = 'qwen3-0.6';
   static const String systemPrompt = '''
 You are a helpful farming assistant specializing in natural farming practices.
 Answer questions based on the provided context. If you don't know the answer,
 say so honestly. Provide practical, actionable advice when possible.''';
+
+  /// Farming tools available for function calling
+  static final List<CactusTool> farmingTools = [
+    CactusTool(
+      name: 'npk_lookup',
+      description:
+          'Look up NPK nutrient requirements, fertilizer schedules, organic nutrient sources, or deficiency symptoms for plants',
+      parameters: ToolParametersSchema(
+        properties: {
+          'plant': ToolParameter(
+            type: 'string',
+            description: 'Name of the plant (e.g., tomato, pepper, lettuce)',
+            required: true,
+          ),
+          'query_type': ToolParameter(
+            type: 'string',
+            description:
+                'Type of information: npk_ratio, fertilizer_schedule, organic_sources, or deficiency_symptoms',
+            required: false,
+          ),
+        },
+      ),
+    ),
+    CactusTool(
+      name: 'calculate',
+      description:
+          'Perform mathematical calculations for fertilizer amounts, nutrient ratios, coverage area, or dilution rates',
+      parameters: ToolParametersSchema(
+        properties: {
+          'expression': ToolParameter(
+            type: 'string',
+            description:
+                'Mathematical expression to evaluate (e.g., "100 * 0.05" for 5% of 100)',
+            required: true,
+          ),
+          'context': ToolParameter(
+            type: 'string',
+            description:
+                'Optional context describing what the calculation is for',
+            required: false,
+          ),
+        },
+      ),
+    ),
+  ];
 
   bool get isInitialized => _isInitialized;
   bool get isDownloading => _isDownloading;
@@ -30,7 +78,14 @@ say so honestly. Provide practical, actionable advice when possible.''';
     if (_isDownloading) return;
 
     _isDownloading = true;
-    _lm = CactusLM();
+    _lm = CactusLM(
+      enableToolFiltering: true,
+      toolFilterConfig: ToolFilterConfig(
+        strategy: ToolFilterStrategy.semantic,
+        maxTools: 2,
+        similarityThreshold: 0.3,
+      ),
+    );
 
     try {
       await _lm!.downloadModel(
@@ -81,7 +136,7 @@ say so honestly. Provide practical, actionable advice when possible.''';
 
     final result = await _lm!.generateCompletion(
       messages: messages,
-      params: CactusCompletionParams(maxTokens: 512),
+      params: CactusCompletionParams(maxTokens: defaultMaxTokens),
     );
 
     if (!result.success) {
@@ -115,10 +170,80 @@ say so honestly. Provide practical, actionable advice when possible.''';
 
     final streamedResult = await _lm!.generateCompletionStream(
       messages: messages,
-      params: CactusCompletionParams(maxTokens: 512),
+      params: CactusCompletionParams(maxTokens: defaultMaxTokens),
     );
 
     return streamedResult.stream;
+  }
+
+  /// Generate a completion with tool calling support
+  /// Returns both the response and any tool calls the model wants to make
+  Future<CompletionResultWithTools> generateCompletionWithTools({
+    required String question,
+    String? context,
+    List<CactusTool>? tools,
+  }) async {
+    if (!_isInitialized) {
+      throw ModelServiceException('Model not initialized. Call initializeModel first.');
+    }
+
+    final systemContent = _buildSystemContentForTools(context);
+    final effectiveTools = tools ?? farmingTools;
+
+    print('[TOOL_DEBUG] generateCompletionWithTools called');
+    print('[TOOL_DEBUG] Question: $question');
+    print('[TOOL_DEBUG] Context length: ${context?.length ?? 0}');
+    print('[TOOL_DEBUG] Available tools: ${effectiveTools.map((t) => t.name).toList()}');
+
+    final messages = [
+      ChatMessage(content: systemContent, role: 'system'),
+      ChatMessage(content: question, role: 'user'),
+    ];
+
+    // DEBUG: Try without tools first to isolate hang
+    print('[TOOL_DEBUG] Calling generateCompletion WITHOUT tools to test...');
+    final result = await _lm!.generateCompletion(
+      messages: messages,
+      params: CactusCompletionParams(
+        maxTokens: defaultMaxTokens,
+        // tools: effectiveTools,  // Temporarily disabled to test
+      ),
+    );
+
+    print('[TOOL_DEBUG] Generation success: ${result.success}');
+    print('[TOOL_DEBUG] Raw response length: ${result.response.length}');
+    print('[TOOL_DEBUG] Tool calls returned: ${result.toolCalls.length}');
+    for (final tc in result.toolCalls) {
+      print('[TOOL_DEBUG]   - Tool: ${tc.name}, Args: ${tc.arguments}');
+    }
+
+    if (!result.success) {
+      throw ModelServiceException('Generation failed: ${result.response}');
+    }
+
+    final cleanedResponse = _cleanResponse(result.response);
+
+    return CompletionResultWithTools(
+      response: cleanedResponse,
+      tokensPerSecond: result.tokensPerSecond,
+      toolCalls: result.toolCalls,
+    );
+  }
+
+  String _buildSystemContentForTools(String? context) {
+    var content = systemPrompt;
+
+    content += '''
+
+You have access to tools for looking up plant nutrient information and performing calculations.
+When the user asks about NPK ratios, fertilizer amounts, or nutrient requirements, use the appropriate tool.
+After receiving tool results, provide a helpful summary to the user.''';
+
+    if (context != null && context.isNotEmpty) {
+      content += '\n\nRelevant Context:\n$context';
+    }
+
+    return content;
   }
 
   String _buildSystemContent(String? context, bool agenticMode) {
@@ -219,7 +344,7 @@ Make multiple iterations if necessary.''';
   Future<void> generate({
     required String prompt,
     required void Function(String token) onToken,
-    int maxTokens = 512,
+    int maxTokens = defaultMaxTokens,
   }) async {
     if (!_isInitialized) {
       throw ModelServiceException('Model not initialized. Call initialize first.');
@@ -270,6 +395,22 @@ class CompletionResult {
     required this.response,
     required this.tokensPerSecond,
   });
+}
+
+/// Result from a completion request with tool calling support
+class CompletionResultWithTools {
+  final String response;
+  final double tokensPerSecond;
+  final List<ToolCall> toolCalls;
+
+  CompletionResultWithTools({
+    required this.response,
+    required this.tokensPerSecond,
+    required this.toolCalls,
+  });
+
+  /// Whether the model requested any tool calls
+  bool get hasToolCalls => toolCalls.isNotEmpty;
 }
 
 /// Exception thrown by ModelService

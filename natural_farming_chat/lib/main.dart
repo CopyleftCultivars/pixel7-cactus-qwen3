@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'services/model_service.dart';
 import 'services/rag_service.dart';
 import 'services/calculator_service.dart';
+import 'services/tool_executor.dart';
 
 void main() {
   runApp(const NaturalFarmingChatApp());
@@ -78,21 +79,24 @@ class _ChatScreenState extends State<ChatScreen> {
   final ModelService _modelService = ModelService();
   final RagService _ragService = RagService();
   final CalculatorService _calculatorService = CalculatorService();
+  late final ToolExecutor _toolExecutor;
 
   bool _isLoading = false;
   bool _isInitialized = false;
-  bool _agenticMode = false;
   String _initStatus = 'Starting...';
   double _initProgress = 0.0;
   String? _deviceInfo;
 
   // Persistence keys
   static const String _chatHistoryKey = 'chat_history';
-  static const String _agenticModeKey = 'agentic_mode';
 
   @override
   void initState() {
     super.initState();
+    _toolExecutor = ToolExecutor(
+      ragService: _ragService,
+      calculatorService: _calculatorService,
+    );
     _loadPersistedSettings();
     _initializeServices();
   }
@@ -100,14 +104,6 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Load persisted settings from SharedPreferences
   Future<void> _loadPersistedSettings() async {
     final prefs = await SharedPreferences.getInstance();
-
-    // Load agentic mode setting
-    final savedAgenticMode = prefs.getBool(_agenticModeKey);
-    if (savedAgenticMode != null) {
-      setState(() {
-        _agenticMode = savedAgenticMode;
-      });
-    }
 
     // Load chat history
     final savedHistory = prefs.getString(_chatHistoryKey);
@@ -134,12 +130,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = _messages.map((m) => m.toJson()).toList();
     await prefs.setString(_chatHistoryKey, jsonEncode(jsonList));
-  }
-
-  /// Save agentic mode setting
-  Future<void> _saveAgenticMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_agenticModeKey, _agenticMode);
   }
 
   Future<void> _initializeServices() async {
@@ -207,28 +197,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      // Get relevant context from RAG
-      final context = await _ragService.searchContext(text);
-
-      // Build prompt with context
-      final prompt = _buildPrompt(text, context);
-
-      // Generate response
-      String response = '';
-      await _modelService.generate(
-        prompt: prompt,
-        onToken: (token) {
-          response += token;
-        },
-      );
-
-      // Clean the response
-      response = _cleanResponse(response);
-
-      // Process calculator tags if in agentic mode
-      if (_agenticMode) {
-        response = _calculatorService.processResponse(response);
-      }
+      // Always use tool-calling flow
+      final response = await _generateWithTools(text);
 
       setState(() {
         _messages.add(ChatMessage(content: response, isUser: false));
@@ -249,44 +219,61 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  String _buildPrompt(String question, String context) {
-    final systemPrompt = '''You are a helpful natural farming assistant.
-Provide accurate, practical advice about organic farming, composting,
-fermented plant extracts (FPE/FPJ), Korean Natural Farming (KNF), and plant nutrition.
-Keep responses concise and actionable.''';
+  /// Generation with tool calling support
+  Future<String> _generateWithTools(String question) async {
+    const maxIterations = 3;
+    String? accumulatedContext;
 
-    String prompt = systemPrompt;
+    print('[TOOL_DEBUG] _generateWithTools started for: $question');
 
-    if (context.isNotEmpty) {
-      prompt += '\n\nRelevant knowledge:\n$context';
+    for (int iteration = 0; iteration < maxIterations; iteration++) {
+      print('[TOOL_DEBUG] Iteration $iteration of $maxIterations');
+
+      // Get RAG context for the question
+      final ragContext = await _ragService.searchContext(question);
+      print('[TOOL_DEBUG] RAG context length: ${ragContext.length}');
+
+      // Combine RAG context with any tool results from previous iterations
+      String? combinedContext;
+      if (ragContext.isNotEmpty || accumulatedContext != null) {
+        combinedContext = [
+          if (ragContext.isNotEmpty) ragContext,
+          if (accumulatedContext != null) accumulatedContext,
+        ].join('\n\n');
+      }
+
+      // Generate completion with tools
+      final result = await _modelService.generateCompletionWithTools(
+        question: question,
+        context: combinedContext,
+      );
+
+      print('[TOOL_DEBUG] hasToolCalls: ${result.hasToolCalls}');
+      print('[TOOL_DEBUG] Response preview: ${result.response.substring(0, result.response.length.clamp(0, 100))}...');
+
+      // If no tool calls, return the response
+      if (!result.hasToolCalls) {
+        print('[TOOL_DEBUG] No tool calls, returning response');
+        return result.response;
+      }
+
+      // Execute tool calls
+      print('[TOOL_DEBUG] Executing ${result.toolCalls.length} tool calls');
+      final toolResults = await _toolExecutor.executeAll(result.toolCalls);
+
+      // Format tool results for next iteration
+      accumulatedContext = _toolExecutor.formatResultsForPrompt(toolResults);
+      print('[TOOL_DEBUG] Tool results formatted, continuing to next iteration');
+
+      // If this is the last iteration, append tool results to response
+      if (iteration == maxIterations - 1) {
+        print('[TOOL_DEBUG] Max iterations reached, returning with tool results');
+        return '${result.response}\n\n$accumulatedContext';
+      }
     }
 
-    if (_agenticMode) {
-      prompt += '\n\nYou have access to a calculator. Use <calculate>expression</calculate> for math.';
-    }
-
-    prompt += '\n\nUser question: $question\n\nAssistant:';
-
-    return prompt;
-  }
-
-  String _cleanResponse(String response) {
-    // Remove common artifacts from model output
-    var cleaned = response;
-
-    // Remove thinking tags
-    cleaned = cleaned.replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '');
-
-    // Remove prompt structure markers
-    cleaned = cleaned.replaceAll(RegExp(r'\[/?CONTEXT\]'), '');
-    cleaned = cleaned.replaceAll(RegExp(r'\[/?QUESTION\]'), '');
-    cleaned = cleaned.replaceAll(RegExp(r'\[/?ANSWER\]'), '');
-
-    // Remove leading/trailing whitespace and normalize newlines
-    cleaned = cleaned.trim();
-    cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
-
-    return cleaned;
+    // Fallback (shouldn't reach here)
+    return 'I was unable to complete the request after multiple attempts.';
   }
 
   void _scrollToBottom() {
@@ -426,20 +413,6 @@ Keep responses concise and actionable.''';
             leading: const Icon(Icons.phone_android),
             title: const Text('Device'),
             subtitle: Text(_deviceInfo ?? 'Unknown'),
-          ),
-          const Divider(),
-          SwitchListTile(
-            secondary: const Icon(Icons.psychology),
-            title: const Text('Agentic Mode'),
-            subtitle: const Text('Calculator tools enabled'),
-            value: _agenticMode,
-            onChanged: (value) {
-              setState(() {
-                _agenticMode = value;
-              });
-              _saveAgenticMode();
-              Navigator.pop(context);
-            },
           ),
           const Divider(),
           ListTile(

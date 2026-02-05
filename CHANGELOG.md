@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Remove agentic mode button from Natural Farming Chat UI (#36)
 - Update Flutter app to load pre-built ObjectBox database instead of re-chunking (#26)
 - Implement CLI entry point with argument parsing and document processing (#25)
 - Implement Chunker, Embedder, and RagDatabase services (#24)
@@ -18,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 ### Changed
+- Update main chat flow with tool execution loop in _sendMessage (#34)
+- Create ToolExecutor service for executing RAG lookups and calculations (#33)
+- Define farming tools (npk_lookup, calculate) for Cactus function calling (#32)
+- Increase default max tokens from 512 to 2048 in ModelService (#29)
 - Convert Natural Farming Chat to Flutter Android App (#1)
 - Test on Pixel 7 device (#11)
 - Fix RAG to use pre-computed embeddings without re-chunking on device (#21)
