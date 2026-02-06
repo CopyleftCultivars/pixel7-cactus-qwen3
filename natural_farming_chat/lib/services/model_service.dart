@@ -78,13 +78,11 @@ say so honestly. Provide practical, actionable advice when possible.''';
     if (_isDownloading) return;
 
     _isDownloading = true;
+    // NOTE: semantic tool filtering disabled - it tries to generate embeddings
+    // using the chat model which causes hangs. Since we only have 2 tools,
+    // filtering isn't needed. For more tools, use ToolFilterStrategy.keyword.
     _lm = CactusLM(
-      enableToolFiltering: true,
-      toolFilterConfig: ToolFilterConfig(
-        strategy: ToolFilterStrategy.semantic,
-        maxTools: 2,
-        similarityThreshold: 0.3,
-      ),
+      enableToolFiltering: false,
     );
 
     try {
@@ -200,13 +198,12 @@ say so honestly. Provide practical, actionable advice when possible.''';
       ChatMessage(content: question, role: 'user'),
     ];
 
-    // DEBUG: Try without tools first to isolate hang
-    print('[TOOL_DEBUG] Calling generateCompletion WITHOUT tools to test...');
+    print('[TOOL_DEBUG] Calling generateCompletion WITH tools...');
     final result = await _lm!.generateCompletion(
       messages: messages,
       params: CactusCompletionParams(
         maxTokens: defaultMaxTokens,
-        // tools: effectiveTools,  // Temporarily disabled to test
+        tools: effectiveTools,
       ),
     );
 

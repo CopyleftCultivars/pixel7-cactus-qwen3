@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:cactus/cactus.dart' show CactusLM;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -8,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../models/document.dart';
 import '../models/document_chunk.dart';
 import '../objectbox.g.dart';
+import 'embedding_service.dart';
 
 /// Service for managing RAG (Retrieval-Augmented Generation) operations
 /// using direct ObjectBox access with a pre-built database.
@@ -18,7 +18,7 @@ class RagService {
   Store? _store;
   Box<Document>? _documentBox;
   Box<DocumentChunk>? _chunkBox;
-  CactusLM? _lm;
+  EmbeddingService? _embeddingService;
   bool _isInitialized = false;
   bool _documentsLoaded = false;
 
@@ -32,11 +32,11 @@ class RagService {
   bool get isInitialized => _isInitialized;
   bool get documentsLoaded => _documentsLoaded;
 
-  /// Initialize the RAG service with a reference to CactusLM for query embeddings
-  Future<void> initialize(CactusLM lm) async {
+  /// Initialize the RAG service with a dedicated embedding service
+  Future<void> initialize(EmbeddingService embeddingService) async {
     if (_isInitialized) return;
 
-    _lm = lm;
+    _embeddingService = embeddingService;
 
     // Extract pre-built database from assets BEFORE ObjectBox initializes
     final dbPath = await _extractPrebuiltDatabase();
@@ -71,10 +71,9 @@ class RagService {
     print('[RAG] ObjectBox store opened at $dbPath');
   }
 
-  /// Generate embedding for search queries using on-device model
+  /// Generate embedding for search queries using dedicated embedding model
   Future<List<double>> _generateQueryEmbedding(String text) async {
-    final result = await _lm!.generateEmbedding(text: text);
-    return result.embeddings;
+    return await _embeddingService!.generateEmbedding(text);
   }
 
   /// Minimum expected database size in bytes (10MB).
@@ -258,7 +257,7 @@ class RagService {
     _store = null;
     _documentBox = null;
     _chunkBox = null;
-    _lm = null;
+    _embeddingService = null;
     _isInitialized = false;
     _documentsLoaded = false;
   }

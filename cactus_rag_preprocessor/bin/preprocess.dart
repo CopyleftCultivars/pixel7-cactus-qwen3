@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
@@ -9,12 +10,14 @@ import 'package:cactus_rag_preprocessor/services/database.dart';
 /// Maximum file size to load entirely into memory (10MB)
 const int maxFileSizeBytes = 10 * 1024 * 1024;
 
+/// Required embedding model - must match CactusLM's Qwen3-Embedding for compatibility
+const String requiredEmbeddingModel = 'qwen3-embedding:0.6b';
+
 void main(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption('input', abbr: 'i', help: 'Input file or directory (required)')
     ..addOption('output', abbr: 'o', help: 'Output ObjectBox directory (required)')
-    ..addOption('api-url', defaultsTo: 'http://localhost:11434', help: 'Embedding API URL')
-    ..addOption('api-model', defaultsTo: 'mxbai-embed-large', help: 'Embedding model name')
+    ..addOption('api-url', defaultsTo: 'http://localhost:11435', help: 'Embedding API URL')
     ..addOption('chunk-size', defaultsTo: '512', help: 'Characters per chunk')
     ..addOption('chunk-overlap', defaultsTo: '64', help: 'Overlap between chunks')
     ..addOption('extensions', abbr: 'e', defaultsTo: '.txt,.md', help: 'File extensions to process')
@@ -40,7 +43,9 @@ void main(List<String> arguments) async {
     print('Usage: dart run bin/preprocess.dart [options]');
     print('');
     print('Requirements:');
-    print('  - Ollama running with mxbai-embed-large model (1024 dimensions)');
+    print('  - Ollama running with $requiredEmbeddingModel (1024 dimensions)');
+    print('  - Default API: http://localhost:11435 (CactusLM embedding container)');
+    print('  - Model is hardcoded for CactusLM compatibility (not configurable)');
     print('  - ObjectBox version must match Flutter app (currently 5.0.4)');
     print('');
     print(parser.usage);
@@ -58,7 +63,6 @@ void main(List<String> arguments) async {
   }
 
   final apiUrl = args['api-url'] as String;
-  final apiModel = args['api-model'] as String;
   final chunkSize = int.parse(args['chunk-size'] as String);
   final chunkOverlap = int.parse(args['chunk-overlap'] as String);
   final extensions = (args['extensions'] as String).split(',').map((e) => e.trim()).toList();
@@ -110,9 +114,31 @@ void main(List<String> arguments) async {
     }
   }
 
+  // Verify required embedding model is available on the API
+  print('Verifying embedding model at $apiUrl...');
+  try {
+    final modelCheckResult = await _verifyEmbeddingModel(apiUrl);
+    if (!modelCheckResult.success) {
+      stderr.writeln('Error: ${modelCheckResult.error}');
+      stderr.writeln('');
+      stderr.writeln('The preprocessor requires exactly: $requiredEmbeddingModel');
+      stderr.writeln('This ensures embedding compatibility with CactusLM on mobile.');
+      stderr.writeln('');
+      stderr.writeln('To fix:');
+      stderr.writeln('  1. Start Ollama container on port 11435');
+      stderr.writeln('  2. Pull the model: ollama pull $requiredEmbeddingModel');
+      exit(1);
+    }
+    print('Model verified: $requiredEmbeddingModel');
+  } catch (e) {
+    stderr.writeln('Error connecting to Ollama API: $e');
+    stderr.writeln('Make sure Ollama is running at $apiUrl');
+    exit(1);
+  }
+
   // Initialize embedder with dimension validation
-  print('Initializing embedder ($apiUrl, model: $apiModel)...');
-  final embedder = HttpEmbedder(apiUrl: apiUrl, model: apiModel);
+  print('Initializing embedder ($apiUrl, model: $requiredEmbeddingModel)...');
+  final embedder = HttpEmbedder(apiUrl: apiUrl, model: requiredEmbeddingModel);
 
   try {
     await embedder.initialize();
@@ -121,7 +147,7 @@ void main(List<String> arguments) async {
     stderr.writeln('Error: $e');
     stderr.writeln('');
     stderr.writeln('Make sure Ollama is running: ollama serve');
-    stderr.writeln('And the model is pulled: ollama pull $apiModel');
+    stderr.writeln('And the model is pulled: ollama pull $requiredEmbeddingModel');
     exit(1);
   }
 
@@ -210,4 +236,50 @@ void main(List<String> arguments) async {
   print('1. Copy $output/data.mdb to Flutter app assets/rag_db/');
   print('2. Update pubspec.yaml to include assets/rag_db/');
   print('3. Update rag_service.dart to extract and use pre-built database');
+}
+
+/// Result of model verification check
+class _ModelCheckResult {
+  final bool success;
+  final String? error;
+
+  _ModelCheckResult.ok() : success = true, error = null;
+  _ModelCheckResult.failed(this.error) : success = false;
+}
+
+/// Verify that the required embedding model is available on the Ollama API
+Future<_ModelCheckResult> _verifyEmbeddingModel(String apiUrl) async {
+  final client = HttpClient();
+  try {
+    final uri = Uri.parse('$apiUrl/api/tags');
+    final request = await client.getUrl(uri);
+    final response = await request.close();
+
+    if (response.statusCode != 200) {
+      return _ModelCheckResult.failed(
+        'API returned status ${response.statusCode}',
+      );
+    }
+
+    final body = await response.transform(utf8.decoder).join();
+    final data = jsonDecode(body) as Map<String, dynamic>;
+    final models = data['models'] as List<dynamic>? ?? [];
+
+    // Check if required model is available
+    final modelNames = models
+        .map((m) => (m as Map<String, dynamic>)['name'] as String?)
+        .whereType<String>()
+        .toList();
+
+    if (!modelNames.contains(requiredEmbeddingModel)) {
+      return _ModelCheckResult.failed(
+        'Model "$requiredEmbeddingModel" not found.\n'
+        'Available models: ${modelNames.join(", ")}',
+      );
+    }
+
+    return _ModelCheckResult.ok();
+  } finally {
+    client.close();
+  }
 }
