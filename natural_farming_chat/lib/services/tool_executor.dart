@@ -1,18 +1,18 @@
 import 'package:cactus/cactus.dart' show ToolCall;
 
 import 'calculator_service.dart';
-import 'rag_service.dart';
+import 'plant_lookup_service.dart';
 
 /// Service for executing tool calls requested by the LLM.
-/// Dispatches tool calls to appropriate handlers (RAG lookups, calculations).
+/// Dispatches tool calls to appropriate handlers (plant lookups, calculations).
 class ToolExecutor {
-  final RagService _ragService;
+  final PlantLookupService _plantLookupService;
   final CalculatorService _calculatorService;
 
   ToolExecutor({
-    required RagService ragService,
+    required PlantLookupService plantLookupService,
     required CalculatorService calculatorService,
-  })  : _ragService = ragService,
+  })  : _plantLookupService = plantLookupService,
         _calculatorService = calculatorService;
 
   /// Execute a tool call and return the result
@@ -23,10 +23,10 @@ class ToolExecutor {
     ToolResult result;
     switch (toolCall.name) {
       case 'npk_lookup':
-        result = await _executeNPKLookup(toolCall.arguments);
+        result = _executeNPKLookup(toolCall.arguments);
         break;
       case 'calculate':
-        result = await _executeCalculation(toolCall.arguments);
+        result = _executeCalculation(toolCall.arguments);
         break;
       default:
         result = ToolResult(
@@ -50,8 +50,8 @@ class ToolExecutor {
     return results;
   }
 
-  /// Execute NPK lookup using RAG service
-  Future<ToolResult> _executeNPKLookup(Map<String, String> arguments) async {
+  /// Execute NPK/mineral lookup using direct JSON plant database
+  ToolResult _executeNPKLookup(Map<String, String> arguments) {
     final plant = arguments['plant'];
     if (plant == null || plant.isEmpty) {
       return ToolResult(
@@ -61,57 +61,21 @@ class ToolExecutor {
       );
     }
 
-    final queryType = arguments['query_type'] ?? 'npk_ratio';
+    final lookupResult = _plantLookupService.lookup(plant);
 
-    // Build targeted RAG query based on query type
-    final query = _buildNPKQuery(plant, queryType);
-
-    try {
-      final context = await _ragService.searchContext(query);
-
-      if (context.isEmpty) {
-        return ToolResult(
-          toolName: 'npk_lookup',
-          success: true,
-          result: 'No specific information found for $plant $queryType. '
-              'Try general organic gardening practices.',
-          metadata: {'plant': plant, 'query_type': queryType},
-        );
-      }
-
-      return ToolResult(
-        toolName: 'npk_lookup',
-        success: true,
-        result: context,
-        metadata: {'plant': plant, 'query_type': queryType},
-      );
-    } catch (e) {
-      return ToolResult(
-        toolName: 'npk_lookup',
-        success: false,
-        result: 'Error searching knowledge base: $e',
-      );
-    }
-  }
-
-  /// Build a targeted RAG query for NPK lookup
-  String _buildNPKQuery(String plant, String queryType) {
-    switch (queryType) {
-      case 'npk_ratio':
-        return '$plant NPK ratio nitrogen phosphorus potassium requirements';
-      case 'fertilizer_schedule':
-        return '$plant fertilizer feeding schedule timing application';
-      case 'organic_sources':
-        return '$plant organic fertilizer natural nutrient sources compost';
-      case 'deficiency_symptoms':
-        return '$plant nutrient deficiency symptoms yellowing wilting signs';
-      default:
-        return '$plant NPK nutrients fertilizer requirements';
-    }
+    return ToolResult(
+      toolName: 'npk_lookup',
+      success: lookupResult.found,
+      result: lookupResult.message,
+      metadata: {
+        'plant': plant,
+        if (lookupResult.plantName != null) 'matched': lookupResult.plantName!,
+      },
+    );
   }
 
   /// Execute calculation using calculator service
-  Future<ToolResult> _executeCalculation(Map<String, String> arguments) async {
+  ToolResult _executeCalculation(Map<String, String> arguments) {
     final expression = arguments['expression'];
     if (expression == null || expression.isEmpty) {
       return ToolResult(
@@ -128,7 +92,7 @@ class ToolExecutor {
     return ToolResult(
       toolName: 'calculate',
       success: !isError,
-      result: isError ? calcResult : calcResult,
+      result: calcResult,
       metadata: {
         'expression': expression,
         if (context != null) 'context': context,

@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Port calculator tool and agentic mode (#8)
 
 ### Fixed
+- Fix tool calling loop by using two-phase generate approach (#43)
 
 ### Changed
 - Update main chat flow with tool execution loop in _sendMessage (#34)

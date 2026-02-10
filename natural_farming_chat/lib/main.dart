@@ -2,8 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/model_service.dart';
-import 'services/embedding_service.dart';
-import 'services/rag_service.dart';
+import 'services/plant_lookup_service.dart';
 import 'services/calculator_service.dart';
 import 'services/tool_executor.dart';
 
@@ -78,8 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _messages = [];
 
   final ModelService _modelService = ModelService();
-  final EmbeddingService _embeddingService = EmbeddingService();
-  final RagService _ragService = RagService();
+  final PlantLookupService _plantLookupService = PlantLookupService();
   final CalculatorService _calculatorService = CalculatorService();
   late final ToolExecutor _toolExecutor;
 
@@ -96,7 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _toolExecutor = ToolExecutor(
-      ragService: _ragService,
+      plantLookupService: _plantLookupService,
       calculatorService: _calculatorService,
     );
     _loadPersistedSettings();
@@ -136,11 +134,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initializeServices() async {
     try {
-      // Initialize the chat model (50% of init)
+      // Initialize the chat model (80% of init)
       await _modelService.initialize(
         onProgress: (progress, status) {
           setState(() {
-            _initProgress = progress * 0.5;
+            _initProgress = progress * 0.8;
             _initStatus = status;
           });
         },
@@ -150,34 +148,16 @@ class _ChatScreenState extends State<ChatScreen> {
       final deviceInfo = await _modelService.getDeviceInfo();
       _deviceInfo = deviceInfo['device'] ?? 'Unknown';
 
-      // Initialize the embedding model (20% of init)
-      setState(() {
-        _initProgress = 0.5;
-        _initStatus = 'Loading embedding model...';
-      });
-
-      await _embeddingService.initialize(
-        onProgress: (progress, status) {
-          setState(() {
-            _initProgress = 0.5 + (progress * 0.2);
-            _initStatus = status;
-          });
-        },
-      );
-
-      // Initialize RAG with the embedding service (extracts pre-built database from assets)
-      await _ragService.initialize(_embeddingService);
-
+      // Initialize plant mineral database from bundled JSON (20% of init)
       setState(() {
         _initProgress = 0.8;
-        _initStatus = 'Loading knowledge base...';
+        _initStatus = 'Loading plant mineral database...';
       });
 
-      // Load knowledge base
-      await _ragService.loadKnowledgeBase(
+      await _plantLookupService.initialize(
         onProgress: (progress, status) {
           setState(() {
-            _initProgress = 0.8 + (progress * 0.2); // Knowledge is 20% of init
+            _initProgress = 0.8 + (progress * 0.2);
             _initStatus = status;
           });
         },
@@ -236,61 +216,43 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  /// Generation with tool calling support
+  /// Two-phase generation with tool calling support.
+  /// Phase 1: Generate with tools — model decides if tools are needed.
+  /// Phase 2: If tools were called, execute them and generate again WITHOUT
+  ///          tools so the model must synthesize a text response from the data.
   Future<String> _generateWithTools(String question) async {
-    const maxIterations = 3;
-    String? accumulatedContext;
-
     print('[TOOL_DEBUG] _generateWithTools started for: $question');
 
-    for (int iteration = 0; iteration < maxIterations; iteration++) {
-      print('[TOOL_DEBUG] Iteration $iteration of $maxIterations');
+    // Phase 1: Generate with tools available
+    final result = await _modelService.generateCompletionWithTools(
+      question: question,
+    );
 
-      // Get RAG context for the question
-      final ragContext = await _ragService.searchContext(question);
-      print('[TOOL_DEBUG] RAG context length: ${ragContext.length}');
+    print('[TOOL_DEBUG] hasToolCalls: ${result.hasToolCalls}');
+    print('[TOOL_DEBUG] Response preview: ${result.response.substring(0, result.response.length.clamp(0, 100))}...');
 
-      // Combine RAG context with any tool results from previous iterations
-      String? combinedContext;
-      if (ragContext.isNotEmpty || accumulatedContext != null) {
-        combinedContext = [
-          if (ragContext.isNotEmpty) ragContext,
-          if (accumulatedContext != null) accumulatedContext,
-        ].join('\n\n');
-      }
-
-      // Generate completion with tools
-      final result = await _modelService.generateCompletionWithTools(
-        question: question,
-        context: combinedContext,
-      );
-
-      print('[TOOL_DEBUG] hasToolCalls: ${result.hasToolCalls}');
-      print('[TOOL_DEBUG] Response preview: ${result.response.substring(0, result.response.length.clamp(0, 100))}...');
-
-      // If no tool calls, return the response
-      if (!result.hasToolCalls) {
-        print('[TOOL_DEBUG] No tool calls, returning response');
-        return result.response;
-      }
-
-      // Execute tool calls
-      print('[TOOL_DEBUG] Executing ${result.toolCalls.length} tool calls');
-      final toolResults = await _toolExecutor.executeAll(result.toolCalls);
-
-      // Format tool results for next iteration
-      accumulatedContext = _toolExecutor.formatResultsForPrompt(toolResults);
-      print('[TOOL_DEBUG] Tool results formatted, continuing to next iteration');
-
-      // If this is the last iteration, append tool results to response
-      if (iteration == maxIterations - 1) {
-        print('[TOOL_DEBUG] Max iterations reached, returning with tool results');
-        return '${result.response}\n\n$accumulatedContext';
-      }
+    // If no tool calls, return the response directly
+    if (!result.hasToolCalls) {
+      print('[TOOL_DEBUG] No tool calls, returning response');
+      return result.response;
     }
 
-    // Fallback (shouldn't reach here)
-    return 'I was unable to complete the request after multiple attempts.';
+    // Execute tool calls
+    print('[TOOL_DEBUG] Executing ${result.toolCalls.length} tool calls');
+    final toolResults = await _toolExecutor.executeAll(result.toolCalls);
+    final toolContext = _toolExecutor.formatResultsForPrompt(toolResults);
+    print('[TOOL_DEBUG] Tool results formatted (${toolContext.length} chars)');
+
+    // Phase 2: Generate WITHOUT tools, passing tool results as context
+    // This forces the model to produce a text response from the data
+    print('[TOOL_DEBUG] Phase 2: generating response from tool results');
+    final synthesis = await _modelService.generateCompletion(
+      question: question,
+      context: toolContext,
+    );
+
+    print('[TOOL_DEBUG] Synthesis complete (${synthesis.response.length} chars)');
+    return synthesis.response;
   }
 
   void _scrollToBottom() {
@@ -321,10 +283,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.dispose();
     _scrollController.dispose();
     _modelService.dispose();
-    _embeddingService.dispose();
-    // RagService.dispose() is async but we can't await in synchronous dispose
-    // The service will clean up eventually when the future completes
-    _ragService.dispose();
     super.dispose();
   }
 

@@ -67,9 +67,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Pre-built RAG database
+  # Pre-built RAG database (kept for potential future use)
   assets:
     - assets/rag_db/
+    - assets/plant_data/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

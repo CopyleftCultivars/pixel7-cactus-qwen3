@@ -22,19 +22,13 @@ say so honestly. Provide practical, actionable advice when possible.''';
     CactusTool(
       name: 'npk_lookup',
       description:
-          'Look up NPK nutrient requirements, fertilizer schedules, organic nutrient sources, or deficiency symptoms for plants',
+          'Look up the mineral profile of a plant including calcium, iron, potassium, phosphorus, magnesium, and other minerals across different plant parts (leaf, fruit, seed, root, etc.)',
       parameters: ToolParametersSchema(
         properties: {
           'plant': ToolParameter(
             type: 'string',
-            description: 'Name of the plant (e.g., tomato, pepper, lettuce)',
+            description: 'Common name or scientific name of the plant (e.g., Tomato, Okra, Solanum lycopersicum)',
             required: true,
-          ),
-          'query_type': ToolParameter(
-            type: 'string',
-            description:
-                'Type of information: npk_ratio, fertilizer_schedule, organic_sources, or deficiency_symptoms',
-            required: false,
           ),
         },
       ),
