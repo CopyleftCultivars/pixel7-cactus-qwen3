@@ -1,19 +1,24 @@
 import 'package:cactus/cactus.dart' show ToolCall;
 
 import 'calculator_service.dart';
+import 'fertilizer_formulation_service.dart';
 import 'plant_lookup_service.dart';
 
 /// Service for executing tool calls requested by the LLM.
-/// Dispatches tool calls to appropriate handlers (plant lookups, calculations).
+/// Dispatches tool calls to appropriate handlers (plant lookups, calculations,
+/// and fertilizer formulations).
 class ToolExecutor {
   final PlantLookupService _plantLookupService;
   final CalculatorService _calculatorService;
+  final FertilizerFormulationService _formulationService;
 
   ToolExecutor({
     required PlantLookupService plantLookupService,
     required CalculatorService calculatorService,
+    required FertilizerFormulationService formulationService,
   })  : _plantLookupService = plantLookupService,
-        _calculatorService = calculatorService;
+        _calculatorService = calculatorService,
+        _formulationService = formulationService;
 
   /// Execute a tool call and return the result
   Future<ToolResult> execute(ToolCall toolCall) async {
@@ -27,6 +32,9 @@ class ToolExecutor {
         break;
       case 'calculate':
         result = _executeCalculation(toolCall.arguments);
+        break;
+      case 'local_fertilizer_plants':
+        result = _executeFormulation(toolCall.arguments);
         break;
       default:
         result = ToolResult(
@@ -96,6 +104,40 @@ class ToolExecutor {
       metadata: {
         'expression': expression,
         if (context != null) 'context': context,
+      },
+    );
+  }
+
+  /// Execute fertilizer formulation using region + mineral profile data
+  ToolResult _executeFormulation(Map<String, String> arguments) {
+    final location = arguments['location'];
+    if (location == null || location.isEmpty) {
+      return ToolResult(
+        toolName: 'local_fertilizer_plants',
+        success: false,
+        result: 'Missing required parameter: location',
+      );
+    }
+
+    final nutrient = arguments['nutrient'];
+    if (nutrient == null || nutrient.isEmpty) {
+      return ToolResult(
+        toolName: 'local_fertilizer_plants',
+        success: false,
+        result: 'Missing required parameter: nutrient',
+      );
+    }
+
+    final formulation = _formulationService.formulate(location, nutrient);
+
+    return ToolResult(
+      toolName: 'local_fertilizer_plants',
+      success: formulation.success,
+      result: formulation.message,
+      metadata: {
+        'location': location,
+        'nutrient': nutrient,
+        'region_matched': formulation.regionName,
       },
     );
   }

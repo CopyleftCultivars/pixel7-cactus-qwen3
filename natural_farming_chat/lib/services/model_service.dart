@@ -54,6 +54,31 @@ say so honestly. Provide practical, actionable advice when possible.''';
         },
       ),
     ),
+    CactusTool(
+      name: 'local_fertilizer_plants',
+      description:
+          'Create an organic fertilizer formulation using plants available '
+          'in the user\'s region. Returns a complete blend with percentages, '
+          'NPK values, and preparation instructions.',
+      parameters: ToolParametersSchema(
+        properties: {
+          'location': ToolParameter(
+            type: 'string',
+            description:
+                'Country or region name (e.g., "Kenya", "California", "France")',
+            required: true,
+          ),
+          'nutrient': ToolParameter(
+            type: 'string',
+            description:
+                'Target nutrient or growth stage: "nitrogen" (leafy/vegetative), '
+                '"phosphorus" (flowering/roots), "potassium" (fruiting), '
+                '"balanced", "vegetative", "flowering", "fruiting", or "seedling"',
+            required: true,
+          ),
+        },
+      ),
+    ),
   ];
 
   bool get isInitialized => _isInitialized;
@@ -73,8 +98,8 @@ say so honestly. Provide practical, actionable advice when possible.''';
 
     _isDownloading = true;
     // NOTE: semantic tool filtering disabled - it tries to generate embeddings
-    // using the chat model which causes hangs. Since we only have 2 tools,
-    // filtering isn't needed. For more tools, use ToolFilterStrategy.keyword.
+    // using the chat model which causes hangs. With 3 tools, keyword-based
+    // filtering could help but isn't critical yet.
     _lm = CactusLM(
       enableToolFiltering: false,
     );
@@ -109,11 +134,12 @@ say so honestly. Provide practical, actionable advice when possible.''';
     _isInitialized = true;
   }
 
-  /// Generate a completion with optional context
+  /// Generate a completion with optional context and conversation history
   Future<CompletionResult> generateCompletion({
     required String question,
     String? context,
     bool agenticMode = false,
+    List<ChatMessage>? conversationHistory,
   }) async {
     if (!_isInitialized) {
       throw ModelServiceException('Model not initialized. Call initializeModel first.');
@@ -123,6 +149,7 @@ say so honestly. Provide practical, actionable advice when possible.''';
 
     final messages = [
       ChatMessage(content: systemContent, role: 'system'),
+      if (conversationHistory != null) ...conversationHistory,
       ChatMessage(content: question, role: 'user'),
     ];
 
@@ -174,6 +201,7 @@ say so honestly. Provide practical, actionable advice when possible.''';
     required String question,
     String? context,
     List<CactusTool>? tools,
+    List<ChatMessage>? conversationHistory,
   }) async {
     if (!_isInitialized) {
       throw ModelServiceException('Model not initialized. Call initializeModel first.');
@@ -185,10 +213,12 @@ say so honestly. Provide practical, actionable advice when possible.''';
     print('[TOOL_DEBUG] generateCompletionWithTools called');
     print('[TOOL_DEBUG] Question: $question');
     print('[TOOL_DEBUG] Context length: ${context?.length ?? 0}');
+    print('[TOOL_DEBUG] History turns: ${conversationHistory?.length ?? 0}');
     print('[TOOL_DEBUG] Available tools: ${effectiveTools.map((t) => t.name).toList()}');
 
     final messages = [
       ChatMessage(content: systemContent, role: 'system'),
+      if (conversationHistory != null) ...conversationHistory,
       ChatMessage(content: question, role: 'user'),
     ];
 
@@ -226,8 +256,12 @@ say so honestly. Provide practical, actionable advice when possible.''';
 
     content += '''
 
-You have access to tools for looking up plant nutrient information and performing calculations.
-When the user asks about NPK ratios, fertilizer amounts, or nutrient requirements, use the appropriate tool.
+You have access to tools for looking up plant nutrients, performing calculations, and creating fertilizer formulations.
+When the user asks about NPK ratios or nutrient requirements, use npk_lookup.
+When the user asks about making organic fertilizer:
+- If they haven't specified their location, ask where they are farming.
+- Once you know location and crop type, use local_fertilizer_plants to get a formulation.
+- Choose the nutrient parameter based on growth stage: "nitrogen" for leafy greens or vegetative growth, "phosphorus" for flowering or root development, "potassium" for fruiting, "balanced" for general use, or "seedling" for transplants.
 After receiving tool results, provide a helpful summary to the user.''';
 
     if (context != null && context.isNotEmpty) {

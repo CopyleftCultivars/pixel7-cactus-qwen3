@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Add local fertilizer formulation tool using region-specific plant data (#45)
+- Replace RAG lookup with direct JSON object lookup for plant mineral profiles (#39)
+- Add NPK availability check to plant mineral lookup results (#44)
 - Remove agentic mode button from Natural Farming Chat UI (#36)
 - Update Flutter app to load pre-built ObjectBox database instead of re-chunking (#26)
 - Implement CLI entry point with argument parsing and document processing (#25)
@@ -17,9 +20,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Port calculator tool and agentic mode (#8)
 
 ### Fixed
+- Debug tool calling for NPK lookup and ratio calculations (#37)
 - Fix tool calling loop by using two-phase generate approach (#43)
 
 ### Changed
+- Add conversation history to model context for multi-turn chat (#53)
+- Wire new services into main.dart initialization (#50)
+- Register local_fertilizer_plants tool in ModelService and ToolExecutor (#49)
+- Add FertilizerFormulationService with growth-stage-aware NPK blending (#48)
+- Add JSON schema validation for plant and region data at runtime (#51)
+- Add RegionPlantService for location-to-plant lookups (#47)
+- Copy data assets and update pubspec.yaml (#52)
+- Fix Locally_Growing_Plants_by_Region.json formatting and normalize to Country/Region schema (#46)
 - Update main chat flow with tool execution loop in _sendMessage (#34)
 - Create ToolExecutor service for executing RAG lookups and calculations (#33)
 - Define farming tools (npk_lookup, calculate) for Cactus function calling (#32)

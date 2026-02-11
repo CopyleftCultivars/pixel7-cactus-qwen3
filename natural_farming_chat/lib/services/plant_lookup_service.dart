@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart' show rootBundle;
 
+import 'data_validator.dart';
+
 /// Service for direct JSON-based plant mineral profile lookups.
 /// Replaces RAG-based lookups which suffered from context truncation
 /// due to varying mineral properties per plant.
@@ -22,6 +24,9 @@ class PlantLookupService {
   bool get isInitialized => _isInitialized;
   int get plantCount => _byCommonName.length;
 
+  /// Access to scientific name index for cross-referencing by other services.
+  Map<String, Map<String, dynamic>> get byScientificName => _byScientificName;
+
   /// Load plant mineral profiles from bundled JSON asset.
   Future<void> initialize({
     void Function(double progress, String status)? onProgress,
@@ -32,6 +37,9 @@ class PlantLookupService {
 
     final jsonString = await rootBundle.loadString(_assetPath);
     final List<dynamic> plants = jsonDecode(jsonString);
+
+    onProgress?.call(0.3, 'Validating ${plants.length} plant profiles...');
+    DataValidator.validatePlantProfiles(plants);
 
     onProgress?.call(0.5, 'Indexing ${plants.length} plants...');
 

@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'package:cactus/cactus.dart' as cactus;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/model_service.dart';
 import 'services/plant_lookup_service.dart';
 import 'services/calculator_service.dart';
+import 'services/fertilizer_formulation_service.dart';
+import 'services/region_plant_service.dart';
 import 'services/tool_executor.dart';
 
 void main() {
@@ -79,6 +82,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final ModelService _modelService = ModelService();
   final PlantLookupService _plantLookupService = PlantLookupService();
   final CalculatorService _calculatorService = CalculatorService();
+  final RegionPlantService _regionPlantService = RegionPlantService();
+  late final FertilizerFormulationService _formulationService;
   late final ToolExecutor _toolExecutor;
 
   bool _isLoading = false;
@@ -93,9 +98,14 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _formulationService = FertilizerFormulationService(
+      regionService: _regionPlantService,
+      plantLookupService: _plantLookupService,
+    );
     _toolExecutor = ToolExecutor(
       plantLookupService: _plantLookupService,
       calculatorService: _calculatorService,
+      formulationService: _formulationService,
     );
     _loadPersistedSettings();
     _initializeServices();
@@ -134,11 +144,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initializeServices() async {
     try {
-      // Initialize the chat model (80% of init)
+      // Initialize the chat model (70% of init)
       await _modelService.initialize(
         onProgress: (progress, status) {
           setState(() {
-            _initProgress = progress * 0.8;
+            _initProgress = progress * 0.7;
             _initStatus = status;
           });
         },
@@ -148,16 +158,31 @@ class _ChatScreenState extends State<ChatScreen> {
       final deviceInfo = await _modelService.getDeviceInfo();
       _deviceInfo = deviceInfo['device'] ?? 'Unknown';
 
-      // Initialize plant mineral database from bundled JSON (20% of init)
+      // Initialize plant mineral database from bundled JSON (15% of init)
       setState(() {
-        _initProgress = 0.8;
+        _initProgress = 0.7;
         _initStatus = 'Loading plant mineral database...';
       });
 
       await _plantLookupService.initialize(
         onProgress: (progress, status) {
           setState(() {
-            _initProgress = 0.8 + (progress * 0.2);
+            _initProgress = 0.7 + (progress * 0.15);
+            _initStatus = status;
+          });
+        },
+      );
+
+      // Initialize region plant database (15% of init)
+      setState(() {
+        _initProgress = 0.85;
+        _initStatus = 'Loading region plant database...';
+      });
+
+      await _regionPlantService.initialize(
+        onProgress: (progress, status) {
+          setState(() {
+            _initProgress = 0.85 + (progress * 0.15);
             _initStatus = status;
           });
         },
@@ -216,6 +241,38 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
+  /// Build conversation history from recent messages for model context.
+  /// Returns cactus ChatMessage objects with user/assistant roles.
+  /// Limits to roughly [maxChars] of content to stay within context window.
+  List<cactus.ChatMessage> _buildConversationHistory({int maxChars = 2000}) {
+    // Skip the welcome message (index 0 if it's an assistant message)
+    // and the current user message (last in _messages, already sent separately)
+    final historyMessages = _messages.where((m) {
+      // Exclude the welcome message
+      if (m == _messages.first && !m.isUser) return false;
+      return true;
+    }).toList();
+
+    // Build from most recent backwards, respecting character budget
+    final history = <cactus.ChatMessage>[];
+    var charCount = 0;
+
+    for (var i = historyMessages.length - 1; i >= 0; i--) {
+      final msg = historyMessages[i];
+      if (charCount + msg.content.length > maxChars) break;
+      history.insert(
+        0,
+        cactus.ChatMessage(
+          content: msg.content,
+          role: msg.isUser ? 'user' : 'assistant',
+        ),
+      );
+      charCount += msg.content.length;
+    }
+
+    return history;
+  }
+
   /// Two-phase generation with tool calling support.
   /// Phase 1: Generate with tools — model decides if tools are needed.
   /// Phase 2: If tools were called, execute them and generate again WITHOUT
@@ -223,9 +280,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<String> _generateWithTools(String question) async {
     print('[TOOL_DEBUG] _generateWithTools started for: $question');
 
+    final history = _buildConversationHistory();
+    print('[TOOL_DEBUG] Conversation history: ${history.length} turns, ${history.fold<int>(0, (sum, m) => sum + m.content.length)} chars');
+
     // Phase 1: Generate with tools available
     final result = await _modelService.generateCompletionWithTools(
       question: question,
+      conversationHistory: history,
     );
 
     print('[TOOL_DEBUG] hasToolCalls: ${result.hasToolCalls}');
@@ -244,11 +305,13 @@ class _ChatScreenState extends State<ChatScreen> {
     print('[TOOL_DEBUG] Tool results formatted (${toolContext.length} chars)');
 
     // Phase 2: Generate WITHOUT tools, passing tool results as context
-    // This forces the model to produce a text response from the data
+    // Use shorter history budget since tool context takes space
+    final phase2History = _buildConversationHistory(maxChars: 800);
     print('[TOOL_DEBUG] Phase 2: generating response from tool results');
     final synthesis = await _modelService.generateCompletion(
       question: question,
       context: toolContext,
+      conversationHistory: phase2History,
     );
 
     print('[TOOL_DEBUG] Synthesis complete (${synthesis.response.length} chars)');
