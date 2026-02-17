@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Add Dockerfile for Flutter APK build with ADB deploy support (#54)
 - Add local fertilizer formulation tool using region-specific plant data (#45)
 - Replace RAG lookup with direct JSON object lookup for plant mineral profiles (#39)
 - Add NPK availability check to plant mineral lookup results (#44)
@@ -20,10 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Port calculator tool and agentic mode (#8)
 
 ### Fixed
+- Fix Docker container ADB connectivity to Pixel 7 (#59)
 - Debug tool calling for NPK lookup and ratio calculations (#37)
 - Fix tool calling loop by using two-phase generate approach (#43)
 
 ### Changed
+- Test Docker image build and Pixel 7 ADB connectivity (#58)
+- Create Dockerfile for Flutter Android build with ADB (#57)
+- Create .dockerignore for minimal build context (#56)
+- Update .gitignore and untrack local tooling files (#55)
 - Add conversation history to model context for multi-turn chat (#53)
 - Wire new services into main.dart initialization (#50)
 - Register local_fertilizer_plants tool in ModelService and ToolExecutor (#49)

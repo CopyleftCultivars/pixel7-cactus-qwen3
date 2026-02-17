@@ -1,0 +1,16 @@
+# Exclude everything by default
+*
+
+# Include only the Flutter project
+!natural_farming_chat/
+
+# Exclude build artifacts within included dir
+natural_farming_chat/build/
+natural_farming_chat/.dart_tool/
+natural_farming_chat/.flutter-plugins-dependencies
+natural_farming_chat/android/.gradle/
+natural_farming_chat/android/.kotlin/
+natural_farming_chat/android/local.properties
+natural_farming_chat/android/build/
+natural_farming_chat/.idea/
+natural_farming_chat/*.iml

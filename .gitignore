@@ -1,7 +1,4 @@
-vector_store
-data
-
-# Python
+# === Generated / build artifacts ===
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -19,6 +16,7 @@ models/
 .dart_tool/
 .packages
 build/
+.flutter-plugins-dependencies
 
 # ObjectBox preprocessor build artifacts
 cactus_rag_preprocessor/.dart_tool/
@@ -26,20 +24,26 @@ cactus_rag_preprocessor/download/
 cactus_rag_preprocessor/objectbox_output/
 cactus_rag_preprocessor/lib/libobjectbox.so
 
-# Pre-built RAG database (80MB, regenerate with preprocessor)
+# Pre-built RAG database (regenerate with preprocessor)
 natural_farming_chat/assets/rag_db/
 
-# Precomputed embeddings (regenerate with generate_embeddings.py)
+# Precomputed embeddings
 precomputed_embeddings/
 
-# IDE
+# Generated data
+vector_store/
+data/
+
+# === IDE / Editor ===
 .idea/
 .vscode/
 *.iml
 
-# OS
+# === OS ===
 .DS_Store
 Thumbs.db
 
-# Chainlink local database
-.chainlink/issues.db
+# === Local tooling (not needed for rebuild) ===
+.chainlink/
+.claude/
+.mcp.json
