@@ -401,6 +401,37 @@ Make multiple iterations if necessary.''';
     };
   }
 
+  /// Generate a raw completion with an optional custom system prompt.
+  ///
+  /// Used by the benchmark HTTP server so evaluation harnesses can supply
+  /// their own system prompt (e.g. "Answer with only A/B/C/D").
+  Future<String> generateRaw({
+    required String prompt,
+    String? systemPrompt,
+    int maxTokens = 512,
+  }) async {
+    if (!_isInitialized) {
+      throw ModelServiceException('Model not initialized. Call initializeModel first.');
+    }
+
+    final messages = [
+      if (systemPrompt != null && systemPrompt.isNotEmpty)
+        ChatMessage(content: systemPrompt, role: 'system'),
+      ChatMessage(content: prompt, role: 'user'),
+    ];
+
+    final result = await _lm!.generateCompletion(
+      messages: messages,
+      params: CactusCompletionParams(maxTokens: maxTokens),
+    );
+
+    if (!result.success) {
+      throw ModelServiceException('Generation failed: ${result.response}');
+    }
+
+    return _cleanResponse(result.response);
+  }
+
   /// Unload the model and free resources
   void dispose() {
     _lm?.unload();

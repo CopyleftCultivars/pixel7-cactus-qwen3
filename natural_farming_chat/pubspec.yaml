@@ -40,6 +40,10 @@ dependencies:
   path_provider: ^2.1.2
   path: ^1.8.0
 
+  # HTTP server for Ollama-compatible benchmark endpoint
+  shelf: ^1.4.0
+  shelf_router: ^1.1.0
+
   # ObjectBox for direct database access (same schema as preprocessor)
   objectbox: ^5.0.4
   objectbox_flutter_libs: ^5.0.4

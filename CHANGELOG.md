@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Add Qwen3-0.6B fine-tuning pipeline with conda environment and dataset tooling (#60)
 - Add Dockerfile for Flutter APK build with ADB deploy support (#54)
 - Add local fertilizer formulation tool using region-specific plant data (#45)
 - Replace RAG lookup with direct JSON object lookup for plant mineral profiles (#39)
@@ -26,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fix tool calling loop by using two-phase generate approach (#43)
 
 ### Changed
+- Add Cactus .cact conversion step for fine-tuned merged model (#65)
+- Add LoRA adapter merge script to produce standalone HuggingFace checkpoint (#64)
+- Add QLoRA fine-tuning script using Unsloth for Qwen3-0.6B (#63)
+- Add dataset preparation script for JSONL instruction-response pairs (#62)
+- Create finetune/ project folder and qwen3-finetune conda environment scaffold (#61)
 - Test Docker image build and Pixel 7 ADB connectivity (#58)
 - Create Dockerfile for Flutter Android build with ADB (#57)
 - Create .dockerignore for minimal build context (#56)

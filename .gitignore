@@ -43,7 +43,15 @@ data/
 .DS_Store
 Thumbs.db
 
+# Fine-tuning pipeline generated/downloaded artifacts
+finetune/weights/
+finetune/outputs/
+finetune/data/
+
 # === Local tooling (not needed for rebuild) ===
 .chainlink/
 .claude/
 .mcp.json
+.lolearn/
+.token-monitor
+unsloth_compiled_cache
