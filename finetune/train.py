@@ -33,16 +33,21 @@ Output:
 
 from __future__ import annotations
 
-import argparse
-import json
-import sys
-from pathlib import Path
-from typing import Optional
+import os
+os.environ["UNSLOTH_RETURN_LOGITS"] = "1"  # must be set before unsloth import
 
-import torch
-from datasets import Dataset
-from trl import SFTConfig, SFTTrainer
-from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel  # must be FIRST
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Optional  # noqa: E402
+
+import torch  # noqa: E402
+from datasets import Dataset  # noqa: E402
+from trl import SFTConfig, SFTTrainer  # noqa: E402
+
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +143,10 @@ def load_model_with_lora(
         random_state=42,
     )
 
+    tokenizer.eos_token = "<|im_end|>"
+    tokenizer.eos_token_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+
+
     return model, tokenizer
 
 
@@ -163,7 +172,6 @@ def build_training_args(
     batch_size: int,
     grad_accum: int,
     use_wandb: bool,
-    max_seq_len: int,
 ) -> SFTConfig:
     report_to = "wandb" if use_wandb else "none"
     return SFTConfig(
@@ -177,17 +185,13 @@ def build_training_args(
         bf16=torch.cuda.is_bf16_supported(),
         logging_steps=10,
         save_strategy="epoch",
-        eval_strategy="epoch",
-        load_best_model_at_end=True,
+        eval_strategy="no",
         optim="adamw_8bit",
         lr_scheduler_type="cosine",
         weight_decay=0.01,
         seed=42,
         report_to=report_to,
         run_name="qwen3-0.6b-nf-qlora",
-        max_seq_length=max_seq_len,
-        packing=False,
-        dataset_num_proc=2,
     )
 
 
@@ -326,15 +330,17 @@ def main() -> None:
         batch_size=args.batch_size,
         grad_accum=args.grad_accum,
         use_wandb=args.wandb,
-        max_seq_len=args.max_seq_len,
     )
+
+    tokenizer.eos_token = "<|im_end|>"
+    tokenizer.eos_token_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
 
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
         train_dataset=train_ds,
         eval_dataset=val_ds,
-        args=training_args,
+        args=training_args
     )
 
     # ── Train ──────────────────────────────────────────────────────────────
