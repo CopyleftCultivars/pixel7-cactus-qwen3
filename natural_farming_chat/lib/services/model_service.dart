@@ -1,4 +1,10 @@
+import 'dart:ffi';
+import 'dart:io';
+
+import 'package:archive/archive_io.dart';
 import 'package:cactus/cactus.dart';
+import 'package:ffi/ffi.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// Service for managing CactusLM model operations
 class ModelService {
@@ -11,7 +17,12 @@ class ModelService {
   /// Default maximum tokens for completions (increased from 512 to prevent truncation)
   static const int defaultMaxTokens = 2048;
 
-  static const String modelSlug = 'qwen3-0.6';
+  static const String modelSlug = 'qwen3-nf-finetuned';
+
+  // Download URL set after running finetune/upload_to_hf.sh
+  // Replace with the HuggingFace URL printed by that script.
+  static const String _modelDownloadUrl =
+      'https://huggingface.co/bhugxer/qwen3-nf-finetuned/resolve/main/qwen3-nf-finetuned.zip';
   static const String systemPrompt = '''
 You are a helpful farming assistant specializing in natural farming practices.
 Answer questions based on the provided context. If you don't know the answer,
@@ -90,7 +101,9 @@ say so honestly. Provide practical, actionable advice when possible.''';
   /// Returns null if model is not downloaded yet
   CactusLM? get lm => _lm;
 
-  /// Download the model with progress callback
+  /// Download the fine-tuned model directly from HuggingFace storage.
+  /// Bypasses Cactus's Supabase slug registry since our model is not
+  /// a built-in Cactus model.
   Future<void> downloadModel({
     required void Function(double progress, String status) onProgress,
   }) async {
@@ -105,18 +118,75 @@ say so honestly. Provide practical, actionable advice when possible.''';
     );
 
     try {
-      await _lm!.downloadModel(
-        model: modelSlug,
-        downloadProcessCallback: (progress, status, isError) {
-          _downloadProgress = progress ?? 0.0;
-          _downloadStatus = status;
-          onProgress(_downloadProgress, status);
+      final appDocDir = await getApplicationDocumentsDirectory();
+      final modelFolder = Directory('${appDocDir.path}/models/$modelSlug');
 
-          if (isError) {
-            throw ModelServiceException('Download failed: $status');
+      final configFile = File('${modelFolder.path}/config.txt');
+      if (await configFile.exists()) {
+        onProgress(1.0, 'Model already downloaded');
+        return;
+      }
+
+      // Clean up any partial download before starting fresh
+      if (await modelFolder.exists()) {
+        await modelFolder.delete(recursive: true);
+      }
+
+      await modelFolder.create(recursive: true);
+
+      // Download zip
+      final zipPath = '${appDocDir.path}/models/$modelSlug.zip';
+      final client = HttpClient();
+      try {
+        onProgress(0.0, 'Starting download...');
+        final request = await client.getUrl(Uri.parse(_modelDownloadUrl));
+        final response = await request.close();
+
+        if (response.statusCode != 200) {
+          throw ModelServiceException(
+              'Download failed: HTTP ${response.statusCode}');
+        }
+
+        final contentLength = response.contentLength;
+        final sink = File(zipPath).openWrite();
+        int bytesReceived = 0;
+
+        await for (final chunk in response) {
+          sink.add(chunk);
+          bytesReceived += chunk.length;
+          if (contentLength > 0) {
+            // Reserve 0–0.85 for download, 0.85–1.0 for extraction
+            final downloadProgress = (bytesReceived / contentLength) * 0.85;
+            _downloadProgress = downloadProgress;
+            _downloadStatus =
+                'Downloaded ${bytesReceived ~/ (1024 * 1024)} MB...';
+            onProgress(_downloadProgress, _downloadStatus);
           }
-        },
-      );
+        }
+        await sink.close();
+      } finally {
+        client.close();
+      }
+
+      // Extract zip directly into the model folder
+      onProgress(0.85, 'Extracting model files...');
+      final inputStream = InputFileStream(zipPath);
+      try {
+        final archive = ZipDecoder().decodeStream(inputStream);
+        for (final file in archive) {
+          if (!file.isFile) continue;
+          final outPath = '${modelFolder.path}/${file.name}';
+          await File(outPath).parent.create(recursive: true);
+          final outStream = OutputFileStream(outPath);
+          file.writeContent(outStream);
+          outStream.closeSync();
+        }
+      } finally {
+        inputStream.close();
+      }
+
+      await File(zipPath).delete();
+      onProgress(1.0, 'Download complete');
     } finally {
       _isDownloading = false;
     }
@@ -130,8 +200,35 @@ say so honestly. Provide practical, actionable advice when possible.''';
 
     if (_isInitialized) return;
 
-    await _lm!.initializeModel();
+    // Pass slug explicitly — CactusInitParams defaults to 'qwen3-0.6'
+    // which would point to the wrong model folder.
+    try {
+      await _lm!.initializeModel(params: CactusInitParams(model: modelSlug));
+    } catch (e) {
+      // Surface the native C++ error message for diagnosis
+      final nativeError = _getLastNativeError();
+      print('[MODEL_INIT_ERROR] Flutter exception: $e');
+      print('[MODEL_INIT_ERROR] Native C++ error: $nativeError');
+      rethrow;
+    }
     _isInitialized = true;
+  }
+
+  /// Read the last error from libcactus.so via direct FFI
+  static String _getLastNativeError() {
+    try {
+      final lib = DynamicLibrary.open(
+        Platform.isAndroid ? 'libcactus.so' : 'cactus.framework/cactus',
+      );
+      final getLastError = lib
+          .lookup<NativeFunction<Pointer<Utf8> Function()>>('cactus_get_last_error')
+          .asFunction<Pointer<Utf8> Function()>();
+      final ptr = getLastError();
+      if (ptr.address == 0) return '(no error message)';
+      return ptr.toDartString();
+    } catch (e) {
+      return '(could not read native error: $e)';
+    }
   }
 
   /// Generate a completion with optional context and conversation history

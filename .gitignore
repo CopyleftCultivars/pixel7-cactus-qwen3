@@ -47,6 +47,12 @@ Thumbs.db
 finetune/weights/
 finetune/outputs/
 finetune/data/
+# Merged model (large binary — stored on HuggingFace)
+finetune/merged-model/
+finetune/merged-model.zip
+# Cactus SDK build artifacts (reproducible via android/build.sh)
+finetune/cactus-sdk/venv/
+finetune/cactus-sdk/android/build/
 
 # === Local tooling (not needed for rebuild) ===
 .chainlink/
