@@ -29,6 +29,7 @@
           build-tools-36-0-0
           build-tools-35-0-0      # required by android_id plugin
           platforms-android-36
+          platforms-android-35    # required by cactus plugin
           platforms-android-34    # required by android_id plugin
           ndk-28-2-13676358       # Flutter 3.41.1 default NDK (r28c)
         ]);
