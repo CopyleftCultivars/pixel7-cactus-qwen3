@@ -92,6 +92,7 @@
             pkgs.jdk17
             pkgs.android-tools
             pkgs.git
+            pkgs.git-lfs
             pkgs.curl
             pkgs.unzip
             pkgs.python312
