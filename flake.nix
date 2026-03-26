@@ -31,6 +31,7 @@
           platforms-android-35    # required by cactus plugin
           platforms-android-34    # required by android_id plugin
           ndk-28-2-13676358       # Flutter 3.41.1 default NDK (r28c)
+          cmake-3-22-1            # required by cactus C++ native build
         ]);
 
         # ── Init script run inside the FHS env ───────────────────────────────
