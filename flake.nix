@@ -22,7 +22,6 @@
         };
 
         # ── Android SDK ───────────────────────────────────────────────────────
-        # Mirrors the Dockerfile: build-tools 36.0.0, android-36, NDK r28c
         androidSdk = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs; [
           cmdline-tools-latest
           platform-tools          # adb, fastboot
@@ -34,75 +33,82 @@
           ndk-28-2-13676358       # Flutter 3.41.1 default NDK (r28c)
         ]);
 
-        # ── Shared native libs Flutter needs at build/runtime ─────────────────
-        flutterLibs = with pkgs; [
-          libx11
-          libxcb
-          gtk3
-          glib
-          clang
-          cmake
-          ninja
-          pkg-config
-        ];
+        # ── Init script run inside the FHS env ───────────────────────────────
+        # buildFHSEnv provides /lib64/ld-linux-x86-64.so.2 so that Gradle's
+        # downloaded AAPT2 binary (a pre-built glibc executable) can run.
+        initScript = pkgs.writeShellScript "copyleft-cultivars-init" ''
+          export ANDROID_HOME="${androidSdk}/share/android-sdk"
+          export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
+          export JAVA_HOME="${pkgs.jdk17}"
+          export PUB_CACHE="$HOME/.pub-cache"
+          export FLUTTER_CLI_ANALYTICS="false"
+
+          # ── Benchmark venv ────────────────────────────────────────────────
+          VENV_DIR="$PWD/benchmark/.venv"
+          if [ ! -f "$VENV_DIR/bin/activate" ]; then
+            echo "Creating benchmark venv..."
+            python3.12 -m venv "$VENV_DIR"
+            "$VENV_DIR/bin/pip" install -q --upgrade pip
+            "$VENV_DIR/bin/pip" install -q numpy  # must precede opencompass (scikit-learn build dep)
+            "$VENV_DIR/bin/pip" install -q -r "$PWD/benchmark/requirements.txt"
+            echo "Done."
+          fi
+          source "$VENV_DIR/bin/activate"
+
+          echo "─────────────────────────────────────────────────────────"
+          echo " CopyLeft Cultivars dev environment (FHS)"
+          echo ""
+          echo " Flutter:  $(flutter --version 2>&1 | head -1)"
+          echo " ADB:      $(adb version 2>&1 | head -1)"
+          echo " Python:   $(python3.12 --version) [benchmark/.venv]"
+          echo ""
+          echo " Benchmark workflow (Pixel 7 → localhost:11435):"
+          echo "   1. adb devices"
+          echo "   2. adb forward tcp:11435 tcp:11435"
+          echo "   3. curl http://localhost:11435/api/tags   # verify model ready"
+          echo "   4. cd benchmark && python evaluate.py \\"
+          echo "        --ollama-url http://localhost:11435 \\"
+          echo "        --ollama-model cactus-pixel7-qwen3-0.6"
+          echo ""
+          echo " Flutter APK build:"
+          echo "   cd natural_farming_chat && flutter pub get && flutter build apk --release"
+          echo "─────────────────────────────────────────────────────────"
+          exec bash
+        '';
 
       in {
-        devShells.default = pkgs.mkShell {
+        # buildFHSEnv wraps the shell in a fake standard Linux filesystem so
+        # that Gradle's pre-built AAPT2 binary can find /lib64/ld-linux-x86-64.so.2.
+        devShells.default = (pkgs.buildFHSEnv {
           name = "copyleft-cultivars";
 
-          packages = [
+          targetPkgs = pkgs: [
             pkgs.flutter
             androidSdk
             pkgs.dart
             pkgs.jdk17
-            pkgs.android-tools   # standalone adb if SDK path not on PATH
+            pkgs.android-tools
             pkgs.git
             pkgs.curl
             pkgs.unzip
-            pkgs.python312       # 3.12: pre-built wheels for opencompass/scikit-learn/torch
-          ] ++ flutterLibs;
+            pkgs.python312
+            # Flutter native deps
+            pkgs.libx11
+            pkgs.libxcb
+            pkgs.gtk3
+            pkgs.glib
+            pkgs.clang
+            pkgs.cmake
+            pkgs.ninja
+            pkgs.pkg-config
+            # glibc libs needed by AAPT2 and other pre-built Android tooling
+            pkgs.glibc
+            pkgs.stdenv.cc.cc.lib
+            pkgs.zlib
+          ];
 
-          ANDROID_HOME = "${androidSdk}/share/android-sdk";
-          ANDROID_SDK_ROOT = "${androidSdk}/share/android-sdk";
-          JAVA_HOME = "${pkgs.jdk17}";
-          PUB_CACHE = "$HOME/.pub-cache";
-          FLUTTER_CLI_ANALYTICS = "false";
-
-          shellHook = ''
-            # ── Benchmark venv ────────────────────────────────────────────────
-            # benchmark/requirements.txt is the source of truth.
-            # The venv is gitignored and created once on first `nix develop`.
-            VENV_DIR="$PWD/benchmark/.venv"
-            if [ ! -f "$VENV_DIR/bin/activate" ]; then
-              echo "Creating benchmark venv..."
-              python3.12 -m venv "$VENV_DIR"
-              "$VENV_DIR/bin/pip" install -q --upgrade pip
-              "$VENV_DIR/bin/pip" install -q numpy  # must precede opencompass (scikit-learn build dep)
-              "$VENV_DIR/bin/pip" install -q -r "$PWD/benchmark/requirements.txt"
-              echo "Done."
-            fi
-            source "$VENV_DIR/bin/activate"
-
-            echo "─────────────────────────────────────────────────────────"
-            echo " CopyLeft Cultivars dev environment"
-            echo ""
-            echo " Flutter:  $(flutter --version 2>&1 | head -1)"
-            echo " ADB:      $(adb version 2>&1 | head -1)"
-            echo " Python:   $(python3.12 --version) [benchmark/.venv]"
-            echo ""
-            echo " Benchmark workflow (Pixel 7 → localhost:11435):"
-            echo "   1. adb devices"
-            echo "   2. adb forward tcp:11435 tcp:11435"
-            echo "   3. curl http://localhost:11435/api/tags   # verify model ready"
-            echo "   4. cd benchmark && python evaluate.py \\"
-            echo "        --ollama-url http://localhost:11435 \\"
-            echo "        --ollama-model cactus-pixel7-qwen3-0.6"
-            echo ""
-            echo " Flutter APK build:"
-            echo "   cd natural_farming_chat && flutter pub get && flutter build apk --release"
-            echo "─────────────────────────────────────────────────────────"
-          '';
-        };
+          runScript = initScript;
+        }).env;
       }
     );
 }
