@@ -33,8 +33,8 @@
 
         # ── Shared native libs Flutter needs at build/runtime ─────────────────
         flutterLibs = with pkgs; [
-          xorg.libX11
-          xorg.libxcb
+          libx11
+          libxcb
           gtk3
           glib
           clang
