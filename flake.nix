@@ -42,6 +42,8 @@
           export JAVA_HOME="${pkgs.jdk17}"
           export PUB_CACHE="$HOME/.pub-cache"
           export FLUTTER_CLI_ANALYTICS="false"
+          # Point Gradle at the Nix-provided aapt2 so it never tries to download one
+          export GRADLE_OPTS="-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/share/android-sdk/build-tools/36.0.0/aapt2"
 
           # ── Benchmark venv ────────────────────────────────────────────────
           VENV_DIR="$PWD/benchmark/.venv"
