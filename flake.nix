@@ -56,7 +56,7 @@
             pkgs.git
             pkgs.curl
             pkgs.unzip
-            pkgs.python3         # venv is created from this interpreter
+            pkgs.python312       # 3.12: pre-built wheels for opencompass/scikit-learn/torch
           ] ++ flutterLibs;
 
           ANDROID_HOME = "${androidSdk}/share/android-sdk";
@@ -72,8 +72,9 @@
             VENV_DIR="$PWD/benchmark/.venv"
             if [ ! -f "$VENV_DIR/bin/activate" ]; then
               echo "Creating benchmark venv..."
-              python3 -m venv "$VENV_DIR"
+              python3.12 -m venv "$VENV_DIR"
               "$VENV_DIR/bin/pip" install -q --upgrade pip
+              "$VENV_DIR/bin/pip" install -q numpy  # must precede opencompass (scikit-learn build dep)
               "$VENV_DIR/bin/pip" install -q -r "$PWD/benchmark/requirements.txt"
               echo "Done."
             fi
@@ -84,7 +85,7 @@
             echo ""
             echo " Flutter:  $(flutter --version 2>&1 | head -1)"
             echo " ADB:      $(adb version 2>&1 | head -1)"
-            echo " Python:   $(python3 --version) [benchmark/.venv]"
+            echo " Python:   $(python3.12 --version) [benchmark/.venv]"
             echo ""
             echo " Benchmark workflow (Pixel 7 → localhost:11435):"
             echo "   1. adb devices"
