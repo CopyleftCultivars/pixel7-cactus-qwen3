@@ -9,7 +9,8 @@ venv/
 env/
 
 # Large model files (download separately)
-models/
+/models/
+natural_farming_chat/models/
 *.gguf
 
 # Dart/Flutter build artifacts
