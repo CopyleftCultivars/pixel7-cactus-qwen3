@@ -50,9 +50,8 @@ finetune/data/
 # Merged model (large binary — stored on HuggingFace)
 finetune/merged-model/
 finetune/merged-model.zip
-# Cactus SDK build artifacts (reproducible via android/build.sh)
-finetune/cactus-sdk/venv/
-finetune/cactus-sdk/android/build/
+# Cactus SDK (7GB — clone separately from https://github.com/cactus-compute/cactus)
+finetune/cactus-sdk/
 
 # === Local tooling (not needed for rebuild) ===
 .chainlink/

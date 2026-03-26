@@ -22,11 +22,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Port calculator tool and agentic mode (#8)
 
 ### Fixed
+- Fix train.py compatibility errors to enable successful QLoRA training run (#67)
 - Fix Docker container ADB connectivity to Pixel 7 (#59)
 - Debug tool calling for NPK lookup and ratio calculations (#37)
 - Fix tool calling loop by using two-phase generate approach (#43)
 
 ### Changed
+- Deploy fine-tuned Qwen3-0.6B cactus model to Flutter app via Supabase (#69)
+- Document and set up Google Colab fine-tuning workflow for Qwen3-0.6B (#68)
 - Add Cactus .cact conversion step for fine-tuned merged model (#65)
 - Add LoRA adapter merge script to produce standalone HuggingFace checkpoint (#64)
 - Add QLoRA fine-tuning script using Unsloth for Qwen3-0.6B (#63)
