@@ -28,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fix tool calling loop by using two-phase generate approach (#43)
 
 ### Changed
+- Verify merged Gemma4 model on disk is conversion-ready (#73)
+- Audit and update Cactus SDK for Gemma4 architecture support (#72)
+- Tag current working state as qwen3-cactus and create gemma4-cactus-model branch (#71)
 - Deploy fine-tuned Qwen3-0.6B cactus model to Flutter app via Supabase (#69)
 - Document and set up Google Colab fine-tuning workflow for Qwen3-0.6B (#68)
 - Add Cactus .cact conversion step for fine-tuned merged model (#65)
