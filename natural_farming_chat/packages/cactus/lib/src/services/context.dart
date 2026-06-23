@@ -38,8 +38,8 @@ Future<(int?, String)> _initContextInIsolate(Map<String, dynamic> params) async 
     debugPrint('Initializing context with model: $modelPath, contextSize: $contextSize');
     final modelPathC = modelPath.toNativeUtf8(allocator: calloc);
     try {
-      // We are not using corpusDir for now, passing null pointer
-      final handle = bindings.cactusInit(modelPathC, contextSize, nullptr);
+      // corpusDir unused; cache_index=false means always rebuild if stale
+      final handle = bindings.cactusInit(modelPathC, nullptr, false);
       if (handle != nullptr) {
         return (handle.address, 'Context initialized successfully');
       } else {
@@ -91,6 +91,8 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
       toolsJsonC ?? nullptr,
       callbackPointer ?? nullptr,
       nullptr,
+      nullptr.cast<Uint8>(),
+      0,
     );
 
     debugPrint('Received completion result code: $result');

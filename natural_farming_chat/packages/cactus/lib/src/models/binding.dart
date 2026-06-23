@@ -7,8 +7,8 @@ typedef CactusModel = Pointer<CactusModelOpaque>;
 typedef CactusTokenCallbackNative = Void Function(Pointer<Utf8> token, Uint32 tokenId, Pointer<Void> userData);
 typedef CactusTokenCallbackDart = void Function(Pointer<Utf8> token, int tokenId, Pointer<Void> userData);
 
-typedef CactusInitNative = CactusModel Function(Pointer<Utf8> modelPath, Size contextSize, Pointer<Utf8> corpusDir);
-typedef CactusInitDart = CactusModel Function(Pointer<Utf8> modelPath, int contextSize, Pointer<Utf8> corpusDir);
+typedef CactusInitNative = CactusModel Function(Pointer<Utf8> modelPath, Pointer<Utf8> corpusDir, Bool cacheIndex);
+typedef CactusInitDart = CactusModel Function(Pointer<Utf8> modelPath, Pointer<Utf8> corpusDir, bool cacheIndex);
 
 typedef CactusCompleteNative = Int32 Function(
     CactusModel model,
@@ -18,7 +18,9 @@ typedef CactusCompleteNative = Int32 Function(
     Pointer<Utf8> optionsJson,
     Pointer<Utf8> toolsJson,
     Pointer<NativeFunction<CactusTokenCallbackNative>> callback,
-    Pointer<Void> userData);
+    Pointer<Void> userData,
+    Pointer<Uint8> pcmBuffer,
+    Size pcmBufferSize);
 typedef CactusCompleteDart = int Function(
     CactusModel model,
     Pointer<Utf8> messagesJson,
@@ -27,7 +29,9 @@ typedef CactusCompleteDart = int Function(
     Pointer<Utf8> optionsJson,
     Pointer<Utf8> toolsJson,
     Pointer<NativeFunction<CactusTokenCallbackNative>> callback,
-    Pointer<Void> userData);
+    Pointer<Void> userData,
+    Pointer<Uint8> pcmBuffer,
+    int pcmBufferSize);
 
 typedef CactusDestroyNative = Void Function(CactusModel model);
 typedef CactusDestroyDart = void Function(CactusModel model);
