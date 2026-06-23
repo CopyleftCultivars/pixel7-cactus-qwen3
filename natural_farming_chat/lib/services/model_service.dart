@@ -17,12 +17,10 @@ class ModelService {
   /// Default maximum tokens for completions (increased from 512 to prevent truncation)
   static const int defaultMaxTokens = 2048;
 
-  static const String modelSlug = 'qwen3-nf-finetuned';
+  static const String modelSlug = 'gemma4-nf-finetuned';
 
-  // Download URL set after running finetune/upload_to_hf.sh
-  // Replace with the HuggingFace URL printed by that script.
   static const String _modelDownloadUrl =
-      'https://huggingface.co/bhugxer/qwen3-nf-finetuned/resolve/main/qwen3-nf-finetuned.zip';
+      'https://huggingface.co/bhugxer/gemma4-nf-finetuned-cactus/resolve/main/gemma4-nf-finetuned.zip';
   static const String systemPrompt = '''
 You are a helpful farming assistant specializing in natural farming practices.
 Answer questions based on the provided context. If you don't know the answer,
