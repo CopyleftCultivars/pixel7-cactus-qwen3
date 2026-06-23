@@ -106,20 +106,20 @@ echo ""
 # ── Run conversion ─────────────────────────────────────────────────────────────
 mkdir -p "$OUTPUT_DIR"
 
-CACTUS_BIN="$CACTUS_DIR/venv/bin/cactus"
-if [[ ! -f "$CACTUS_BIN" ]]; then
-    CACTUS_BIN="cactus"
-fi
-
-echo "==> Running Cactus conversion ..."
-echo "    $CACTUS_BIN convert $MERGED_MODEL $OUTPUT_DIR --bits $BITS --local-files-only"
+echo "==> Running Cactus weight quantizer (CPU-only) ..."
+echo "    $PYTHON -m cactus.convert convert --model $MERGED_MODEL --out $OUTPUT_DIR --bits $BITS --force"
 echo ""
 
-"$CACTUS_BIN" convert \
-    "$MERGED_MODEL" \
-    "$OUTPUT_DIR" \
+# Use cactus.convert.cli directly — the top-level 'cactus convert' transpiler
+# tries to build a native ARM engine which fails on x86_64.
+CUDA_VISIBLE_DEVICES="" "$PYTHON" -c "
+from cactus.convert.cli import main
+main()
+" convert \
+    --model "$MERGED_MODEL" \
+    --out "$OUTPUT_DIR" \
     --bits "$BITS" \
-    --local-files-only
+    --force
 
 # ── Verify output ──────────────────────────────────────────────────────────────
 OUTPUT_FILES=()

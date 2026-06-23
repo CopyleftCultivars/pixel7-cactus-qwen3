@@ -25,6 +25,8 @@ VISION_PREFIXES = (
     "model.vision_tower.",
     "model.multi_modal_projector.",
     "model.embed_vision.",
+    "model.audio_tower.",
+    "model.embed_audio.",
 )
 
 VISION_CONFIG_KEYS = ("vision_config", "audio_config")
