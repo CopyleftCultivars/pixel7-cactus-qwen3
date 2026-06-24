@@ -35,6 +35,7 @@ Future<(int?, String)> _initContextInIsolate(Map<String, dynamic> params) async 
   final contextSize = params['contextSize'] as int;
 
   try {
+    bindings.cactusLogSetLevel(0); // DEBUG — captures C++ engine logs to logcat
     debugPrint('Initializing context with model: $modelPath, contextSize: $contextSize');
     final modelPathC = modelPath.toNativeUtf8(allocator: calloc);
     try {
@@ -43,6 +44,9 @@ Future<(int?, String)> _initContextInIsolate(Map<String, dynamic> params) async 
       if (handle != nullptr) {
         return (handle.address, 'Context initialized successfully');
       } else {
+        final errPtr = bindings.cactusGetLastError();
+        final errMsg = errPtr.address != 0 ? errPtr.toDartString() : '(no error message)';
+        debugPrint('[CACTUS_INIT_DETAIL] C++ error: $errMsg');
         return (null, 'Failed to initialize context');
       }
     } finally {

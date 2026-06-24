@@ -39,6 +39,14 @@ final cactusTranscribe = cactusLib
     .lookup<NativeFunction<CactusTranscribeNative>>('cactus_transcribe')
     .asFunction<CactusTranscribeDart>();
 
+final cactusGetLastError = cactusLib
+    .lookup<NativeFunction<Pointer<Utf8> Function()>>('cactus_get_last_error')
+    .asFunction<Pointer<Utf8> Function()>();
+
+final cactusLogSetLevel = cactusLib
+    .lookup<NativeFunction<Void Function(Int32)>>('cactus_log_set_level')
+    .asFunction<void Function(int)>();
+
 final DynamicLibrary cactusUtil = DynamicLibrary.open(_getLibraryPath('cactus_util'));
 
 final registerApp = cactusUtil
