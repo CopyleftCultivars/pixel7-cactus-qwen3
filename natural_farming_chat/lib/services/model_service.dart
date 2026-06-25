@@ -17,10 +17,12 @@ class ModelService {
   /// Default maximum tokens for completions (increased from 512 to prevent truncation)
   static const int defaultMaxTokens = 2048;
 
-  static const String modelSlug = 'gemma4-nf-finetuned';
+  // Using cactus-compute's pre-built Gemma4-E2B-IT v2.0 transpiled bundle
+  // to verify the v2.0 runtime works on Pixel 7 before running finetuned model.
+  static const String modelSlug = 'gemma4-e2b-it';
 
   static const String _modelDownloadUrl =
-      'https://huggingface.co/bhugxer/gemma4-nf-finetuned-cactus/resolve/main/gemma4-nf-finetuned.zip';
+      'https://huggingface.co/Cactus-Compute/gemma-4-E2B-it/resolve/main/gemma-4-e2b-it-cq4.zip';
   static const String systemPrompt = '''
 You are a helpful farming assistant specializing in natural farming practices.
 Answer questions based on the provided context. If you don't know the answer,
