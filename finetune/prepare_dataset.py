@@ -44,15 +44,35 @@ from typing import Generator
 # Loaders
 # ---------------------------------------------------------------------------
 
+_OPTION_LETTERS = ("A", "B", "C", "D")
+
+
+def _cyclic_shift(rec: dict, shift: int) -> tuple[dict[str, str], str]:
+    """Return option texts and new gold letter after cyclically shifting by shift positions.
+
+    shift=0 → original order; shift=1 → [D,A,B,C]; shift=2 → [C,D,A,B], etc.
+    Balances gold-letter distribution across shifts to reduce positional bias.
+    """
+    orig = [rec[l] for l in _OPTION_LETTERS]
+    shifted = orig[-shift:] + orig[:-shift] if shift > 0 else orig[:]
+    options = {l: shifted[i] for i, l in enumerate(_OPTION_LETTERS)}
+    gold_text = rec[rec["answer"].strip().upper()]
+    new_gold = _OPTION_LETTERS[shifted.index(gold_text)]
+    return options, new_gold
+
+
 def _load_mcq_jsonl(path: Path) -> Generator[dict[str, str], None, None]:
     """Convert MCQ benchmark JSONL to instruction-response pairs.
 
-    Each question produces two variants:
-      1. Open-ended: instruction = question, output = answer text only
-      2. MCQ-style:  instruction = question + labelled options,
-                     output = "X — <answer text>"
+    Each question produces:
+      1. Open-ended variant: instruction = question, output = answer text only
+      2. MCQ variants (×4 cyclic shifts): instruction = question + labelled options in
+         each rotation, output = think-block + answer letter only.
 
-    This doubles coverage and teaches both formats.
+    The 4 cyclic shifts balance the gold-letter distribution (A/B/C/D each appear
+    equally as the correct position), fixing positional/D-avoidance bias in the model.
+    The think-block output format teaches the model to reason then emit just the letter,
+    matching what extract_answer expects during evaluation.
     """
     with open(path, encoding="utf-8") as fh:
         for raw_line in fh:
@@ -70,26 +90,32 @@ def _load_mcq_jsonl(path: Path) -> Generator[dict[str, str], None, None]:
                 raise ValueError(f"Record missing fields {missing}: {raw_line[:80]}")
 
             letter = rec["answer"].strip().upper()
-            if letter not in ("A", "B", "C", "D"):
+            if letter not in _OPTION_LETTERS:
                 raise ValueError(f"Unexpected answer letter '{letter}' in {raw_line[:80]}")
 
             answer_text: str = rec[letter].strip()
             question: str = rec["question"].strip()
 
-            # Variant 1 — open-ended
+            # Variant 1 — open-ended (no options, plain answer text)
             yield {
                 "instruction": question,
                 "output": answer_text,
             }
 
-            # Variant 2 — MCQ with labelled options
-            options = "\n".join(
-                f"{opt}. {rec[opt].strip()}" for opt in ("A", "B", "C", "D")
-            )
-            yield {
-                "instruction": f"{question}\n\n{options}",
-                "output": f"{letter}. {answer_text}",
-            }
+            # Variant 2 — MCQ with labelled options, 4 cyclic shifts for bias balance.
+            # Output uses think-block format so the model learns to:
+            #   (a) produce <think>...</think> then emit just the answer letter, and
+            #   (b) answer correctly regardless of which position the correct option occupies.
+            for shift in range(4):
+                opts, new_letter = _cyclic_shift(rec, shift)
+                new_answer_text = opts[new_letter]
+                options_block = "\n".join(f"{l}. {opts[l]}" for l in _OPTION_LETTERS)
+                yield {
+                    "instruction": f"{question}\n\n{options_block}",
+                    "output": (
+                        f"<think>\nThe correct answer is {new_letter}. {new_answer_text}\n</think>\n{new_letter}"
+                    ),
+                }
 
 
 def _load_recipe_json(path: Path) -> Generator[dict[str, str], None, None]:
