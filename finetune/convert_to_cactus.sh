@@ -119,6 +119,7 @@ main()
     --model "$MERGED_MODEL" \
     --out "$OUTPUT_DIR" \
     --bits "$BITS" \
+    --model-family "$MODEL_FAMILY" \
     --force
 
 # ── Verify output ──────────────────────────────────────────────────────────────
