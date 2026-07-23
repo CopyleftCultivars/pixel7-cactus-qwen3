@@ -55,7 +55,6 @@ finetune/merged-model.zip
 finetune/cactus-sdk/
 
 # === Local tooling (not needed for rebuild) ===
-.chainlink/
 .claude/
 .mcp.json
 .lolearn/
