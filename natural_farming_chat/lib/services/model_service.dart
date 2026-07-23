@@ -17,12 +17,12 @@ class ModelService {
   /// Default maximum tokens for completions (increased from 512 to prevent truncation)
   static const int defaultMaxTokens = 2048;
 
-  // Using cactus-compute's pre-built Gemma4-E2B-IT v2.0 transpiled bundle
-  // to verify the v2.0 runtime works on Pixel 7 before running finetuned model.
-  static const String modelSlug = 'gemma4-e2b-it';
+  // Cactus INT4 bundle converted from the v5 Qwen3 checkpoint and published
+  // in the CopyleftCultivars/localNFchatbot-cactus Hugging Face repository.
+  static const String modelSlug = 'qwen3-nf-v5-cact-int4';
 
   static const String _modelDownloadUrl =
-      'https://huggingface.co/Cactus-Compute/gemma-4-E2B-it/resolve/main/gemma-4-e2b-it-cq4.zip';
+      'https://huggingface.co/CopyleftCultivars/localNFchatbot-cactus/resolve/main/qwen3-nf-v5-cact-int4.zip';
   static const String systemPrompt = '''
 You are a helpful farming assistant specializing in natural farming practices.
 Answer questions based on the provided context. If you don't know the answer,
@@ -200,8 +200,8 @@ say so honestly. Provide practical, actionable advice when possible.''';
 
     if (_isInitialized) return;
 
-    // Pass slug explicitly — CactusInitParams defaults to 'qwen3-0.6'
-    // which would point to the wrong model folder.
+    // Pass the published artifact slug explicitly — CactusInitParams defaults
+    // to 'qwen3-0.6', which would point to the wrong model folder.
     try {
       await _lm!.initializeModel(params: CactusInitParams(model: modelSlug));
     } catch (e) {
