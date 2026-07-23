@@ -14,7 +14,6 @@ finetune/
 ├── train.py               # QLoRA fine-tuning via Unsloth + TRL
 ├── merge_adapter.py       # Merge LoRA adapter into base model
 ├── convert_cact.py        # Convert merged model to Cactus .cact format
-├── benchmark.py           # Evaluate base vs fine-tuned model
 ├── data/                  # Processed JSONL datasets (gitignored)
 ├── weights/               # Downloaded base model weights (gitignored)
 └── outputs/               # Training checkpoints and final models (gitignored)
@@ -89,16 +88,6 @@ python finetune/convert_cact.py \
   --input finetune/outputs/merged-model \
   --output finetune/outputs/qwen3-0.6b-finetuned.cact \
   --precision INT8
-```
-
-### 5. Benchmark
-
-```bash
-conda activate qwen3-finetune
-python finetune/benchmark.py \
-  --base Qwen/Qwen3-0.6B \
-  --finetuned finetune/outputs/merged-model \
-  --dataset finetune/data/eval.jsonl
 ```
 
 ## Compute Requirements

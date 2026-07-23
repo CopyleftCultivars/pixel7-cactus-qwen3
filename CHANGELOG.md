@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Improve v3 Qwen3 fine-tune training dataset with rationale CoT and LLM judge validation (#97)
+- Run Stage A selection bias permutation test on Qwen3-0.6B v2 fine-tune (#95)
+- Evaluate Qwen3-0.6B v2 fine-tune accuracy and D-avoidance improvement (#94)
+- Create dedicated conda environment for Qwen3 QLoRA fine-tuning (#93)
+- Set up Qwen3 fine-tune workspace with improved training dataset (#92)
+- Align training target format with evaluation: explicit answer letter after think block (#90)
+- Add option-order shuffling to training data to fix D-avoidance bias (#89)
 - Add Qwen3-0.6B fine-tuning pipeline with conda environment and dataset tooling (#60)
 - Add Dockerfile for Flutter APK build with ADB deploy support (#54)
 - Add local fertilizer formulation tool using region-specific plant data (#45)
@@ -22,12 +29,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Port calculator tool and agentic mode (#8)
 
 ### Fixed
+- Fix logprob scoring to measure answer distribution after think block (#88)
 - Fix train.py compatibility errors to enable successful QLoRA training run (#67)
 - Fix Docker container ADB connectivity to Pixel 7 (#59)
 - Debug tool calling for NPK lookup and ratio calculations (#37)
 - Fix tool calling loop by using two-phase generate approach (#43)
 
 ### Changed
+- Skip Claude-based QMD MCQ generation for v3 (#100)
+- Assemble v3 training dataset with D-position weighting and deduplication (#102)
+- Add LLM-as-judge pipeline to validate training data format and CoT quality (#101)
+- Add rationale to think blocks in existing MCQ training pairs via teacher LLM (#99)
+- Copy finetune-gemma4 scripts, source data, and JSONL pairs into qwen3-finetune (#98)
+- Run Stage A MCQ diagnostics on Qwen3-0.6B fine-tune to identify failure mode (#86)
+- Add MCQ diagnostic observability suite for Qwen3 fine-tune analysis (#79)
+- Upload Gemma4 Cactus model to HuggingFace (#76)
+- Convert finetuned Gemma4 model to Cactus INT4 format (#74)
 - Verify merged Gemma4 model on disk is conversion-ready (#73)
 - Audit and update Cactus SDK for Gemma4 architecture support (#72)
 - Tag current working state as qwen3-cactus and create gemma4-cactus-model branch (#71)

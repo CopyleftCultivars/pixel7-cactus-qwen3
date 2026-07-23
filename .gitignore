@@ -61,3 +61,8 @@ finetune/cactus-sdk/
 .lolearn/
 .token-monitor
 unsloth_compiled_cache
+
+# Local research notes and generated wiki exports
+MCQ_DIAGNOSTIC_PLAN.md
+wiki/
+flake.lock
