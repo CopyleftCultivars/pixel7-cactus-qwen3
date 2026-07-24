@@ -18,7 +18,8 @@ CactusTokenCallback? _activeTokenCallback;
 
 // Static callback function that can be used with Pointer.fromFunction
 @pragma('vm:entry-point')
-void _staticTokenCallbackDispatcher(Pointer<Utf8> tokenC, int tokenId, Pointer<Void> userData) {
+void _staticTokenCallbackDispatcher(
+    Pointer<Utf8> tokenC, int tokenId, Pointer<Void> userData) {
   try {
     final callback = _activeTokenCallback;
     if (callback != null) {
@@ -30,34 +31,50 @@ void _staticTokenCallbackDispatcher(Pointer<Utf8> tokenC, int tokenId, Pointer<V
   }
 }
 
-Future<(int?, String)> _initContextInIsolate(Map<String, dynamic> params) async {
+Future<(int?, String)> _initContextInIsolate(
+    Map<String, dynamic> params) async {
   final modelPath = params['modelPath'] as String;
   final contextSize = params['contextSize'] as int;
 
   try {
     bindings.cactusLogSetLevel(0); // DEBUG — captures C++ engine logs to logcat
-    debugPrint('Initializing context with model: $modelPath, contextSize: $contextSize');
+    debugPrint(
+        'Initializing context with model: $modelPath, contextSize: $contextSize');
     final modelPathC = modelPath.toNativeUtf8(allocator: calloc);
+    final cpuBackendC = 'cpu'.toNativeUtf8(allocator: calloc);
     try {
-      // corpusDir unused; cache_index=false means always rebuild if stale
+      // The A10 GPU in the iPad 6th generation cannot lower the current
+      // Metal SIMD kernels. Select CPU before initialization so the runtime
+      // never probes or compiles the incompatible Metal backend.
+      if (Platform.isIOS) {
+        final backendResult = bindings.cactusSetBackend(cpuBackendC);
+        debugPrint('Selected iOS Cactus CPU backend: $backendResult');
+      }
+
+      // Cactus SDK v2.0 uses (model_path, corpus_dir, cache_index) on all
+      // supported platforms. The context size is retained for API
+      // compatibility and is handled by the runtime graph.
       final handle = bindings.cactusInit(modelPathC, nullptr, false);
       if (handle != nullptr) {
         return (handle.address, 'Context initialized successfully');
       } else {
         final errPtr = bindings.cactusGetLastError();
-        final errMsg = errPtr.address != 0 ? errPtr.toDartString() : '(no error message)';
+        final errMsg =
+            errPtr.address != 0 ? errPtr.toDartString() : '(no error message)';
         debugPrint('[CACTUS_INIT_DETAIL] C++ error: $errMsg');
         return (null, 'Failed to initialize context');
       }
     } finally {
       calloc.free(modelPathC);
+      calloc.free(cpuBackendC);
     }
   } catch (e) {
     return (null, 'Exception during context initialization: $e');
   }
 }
 
-Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params) async {
+Future<CactusCompletionResult> _completionInIsolate(
+    Map<String, dynamic> params) async {
   final handle = params['handle'] as int;
   final messagesJson = params['messagesJson'] as String;
   final optionsJson = params['optionsJson'] as String;
@@ -80,10 +97,9 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
         replyPort.send({'type': 'token', 'data': token});
         return true; // Always continue in isolate mode
       };
-      
+
       callbackPointer = Pointer.fromFunction<CactusTokenCallbackNative>(
-        _staticTokenCallbackDispatcher
-      );
+          _staticTokenCallbackDispatcher);
     }
 
     final result = bindings.cactusComplete(
@@ -102,25 +118,31 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
     debugPrint('Received completion result code: $result');
 
     if (result > 0) {
-      final responseText = utf8.decode(responseBuffer.asTypedList(result), allowMalformed: true).trim();
-      
+      final responseText = utf8
+          .decode(responseBuffer.asTypedList(result), allowMalformed: true)
+          .trim();
+
       try {
         final jsonResponse = jsonDecode(responseText) as Map<String, dynamic>;
         final success = jsonResponse['success'] as bool? ?? true;
         final response = jsonResponse['response'] as String? ?? responseText;
-        final timeToFirstTokenMs = (jsonResponse['time_to_first_token_ms'] as num?)?.toDouble() ?? 0.0;
-        final totalTimeMs = (jsonResponse['total_time_ms'] as num?)?.toDouble() ?? 0.0;
-        final tokensPerSecond = (jsonResponse['tokens_per_second'] as num?)?.toDouble() ?? 0.0;
+        final timeToFirstTokenMs =
+            (jsonResponse['time_to_first_token_ms'] as num?)?.toDouble() ?? 0.0;
+        final totalTimeMs =
+            (jsonResponse['total_time_ms'] as num?)?.toDouble() ?? 0.0;
+        final tokensPerSecond =
+            (jsonResponse['tokens_per_second'] as num?)?.toDouble() ?? 0.0;
         final prefillTokens = jsonResponse['prefill_tokens'] as int? ?? 0;
         final decodeTokens = jsonResponse['decode_tokens'] as int? ?? 0;
         final totalTokens = jsonResponse['total_tokens'] as int? ?? 0;
-        
+
         // Parse tool calls
         List<ToolCall> toolCalls = [];
         if (jsonResponse['function_calls'] != null) {
           final toolCallsJson = jsonResponse['function_calls'] as List<dynamic>;
           toolCalls = toolCallsJson
-              .map((toolCallJson) => ToolCall.fromJson(toolCallJson as Map<String, dynamic>))
+              .map((toolCallJson) =>
+                  ToolCall.fromJson(toolCallJson as Map<String, dynamic>))
               .toList();
         }
 
@@ -173,7 +195,8 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
   }
 }
 
-Future<CactusEmbeddingResult> _generateEmbeddingInIsolate(Map<String, dynamic> params) async {
+Future<CactusEmbeddingResult> _generateEmbeddingInIsolate(
+    Map<String, dynamic> params) async {
   final handle = params['handle'] as int;
   final text = params['text'] as String;
   final bufferSize = params['bufferSize'] as int;
@@ -183,7 +206,8 @@ Future<CactusEmbeddingResult> _generateEmbeddingInIsolate(Map<String, dynamic> p
   final embeddingsBuffer = calloc<Float>(bufferSize);
 
   try {
-    debugPrint('Generating embedding for text: ${text.length > 50 ? "${text.substring(0, 50)}..." : text}');
+    debugPrint(
+        'Generating embedding for text: ${text.length > 50 ? "${text.substring(0, 50)}..." : text}');
 
     // Calculate buffer size in bytes (bufferSize * sizeof(float))
     final bufferSizeInBytes = bufferSize * 4;
@@ -207,7 +231,8 @@ Future<CactusEmbeddingResult> _generateEmbeddingInIsolate(Map<String, dynamic> p
           success: false,
           embeddings: [],
           dimension: 0,
-          errorMessage: 'Embedding dimension ($actualEmbeddingDim) exceeds allocated buffer size ($bufferSize)',
+          errorMessage:
+              'Embedding dimension ($actualEmbeddingDim) exceeds allocated buffer size ($bufferSize)',
         );
       }
 
@@ -216,7 +241,8 @@ Future<CactusEmbeddingResult> _generateEmbeddingInIsolate(Map<String, dynamic> p
         embeddings.add(embeddingsBuffer[i]);
       }
 
-      debugPrint('Successfully extracted ${embeddings.length} embedding values');
+      debugPrint(
+          'Successfully extracted ${embeddings.length} embedding values');
 
       return CactusEmbeddingResult(
         success: true,
@@ -246,7 +272,8 @@ Future<CactusEmbeddingResult> _generateEmbeddingInIsolate(Map<String, dynamic> p
   }
 }
 
-Future<CactusTranscriptionResult> _transcribeInIsolate(Map<String, dynamic> params) async {
+Future<CactusTranscriptionResult> _transcribeInIsolate(
+    Map<String, dynamic> params) async {
   final handle = params['handle'] as int;
   final audioFilePath = params['audioFilePath'] as String?;
   final prompt = params['prompt'] as String;
@@ -259,10 +286,9 @@ Future<CactusTranscriptionResult> _transcribeInIsolate(Map<String, dynamic> para
   if (audioFilePath == null && pcmData == null) {
     debugPrint('ERROR: Neither audio file path nor PCM buffer provided');
     return CactusTranscriptionResult(
-      success: false,
-      text: '',
-      errorMessage: 'Either audio file path or PCM buffer must be provided'
-    );
+        success: false,
+        text: '',
+        errorMessage: 'Either audio file path or PCM buffer must be provided');
   }
 
   if (audioFilePath != null) {
@@ -270,10 +296,9 @@ Future<CactusTranscriptionResult> _transcribeInIsolate(Map<String, dynamic> para
     if (!audioFile.existsSync()) {
       debugPrint('ERROR: Audio file does not exist at path: $audioFilePath');
       return CactusTranscriptionResult(
-        success: false,
-        text: '',
-        errorMessage: 'Audio file not found: $audioFilePath'
-      );
+          success: false,
+          text: '',
+          errorMessage: 'Audio file not found: $audioFilePath');
     }
 
     final fileSize = audioFile.lengthSync();
@@ -289,7 +314,8 @@ Future<CactusTranscriptionResult> _transcribeInIsolate(Map<String, dynamic> para
 
   Pointer<Uint8>? pcmBufferPtr;
   if (pcmData != null) {
-    final Uint8List pcmBytes = pcmData is Uint8List ? pcmData : Uint8List.fromList(pcmData);
+    final Uint8List pcmBytes =
+        pcmData is Uint8List ? pcmData : Uint8List.fromList(pcmData);
     pcmBufferPtr = calloc<Uint8>(pcmBytes.length);
     final nativeList = pcmBufferPtr.asTypedList(pcmBytes.length);
     nativeList.setAll(0, pcmBytes);
@@ -305,8 +331,7 @@ Future<CactusTranscriptionResult> _transcribeInIsolate(Map<String, dynamic> para
       };
 
       callbackPointer = Pointer.fromFunction<CactusTokenCallbackNative>(
-        _staticTokenCallbackDispatcher
-      );
+          _staticTokenCallbackDispatcher);
     }
 
     final result = bindings.cactusTranscribe(
@@ -325,7 +350,10 @@ Future<CactusTranscriptionResult> _transcribeInIsolate(Map<String, dynamic> para
     if (result <= 0) {
       // Try to read any error message from the buffer
       try {
-        final errorText = utf8.decode(responseBuffer.asTypedList(bufferSize), allowMalformed: true).trim();
+        final errorText = utf8
+            .decode(responseBuffer.asTypedList(bufferSize),
+                allowMalformed: true)
+            .trim();
         if (errorText.isNotEmpty) {
           debugPrint('Error message from C++: $errorText');
         }
@@ -335,26 +363,30 @@ Future<CactusTranscriptionResult> _transcribeInIsolate(Map<String, dynamic> para
     }
 
     if (result > 0) {
-      final responseText = utf8.decode(responseBuffer.asTypedList(result), allowMalformed: true).trim();
+      final responseText = utf8
+          .decode(responseBuffer.asTypedList(result), allowMalformed: true)
+          .trim();
       try {
         final jsonResponse = jsonDecode(responseText) as Map<String, dynamic>;
         final success = jsonResponse['success'] as bool? ?? true;
         // Try 'text' first, then 'response', then fall back to raw responseText
         final text = (jsonResponse['text'] as String?) ??
-                     (jsonResponse['response'] as String?) ??
-                     responseText;
-        final timeToFirstTokenMs = (jsonResponse['time_to_first_token_ms'] as num?)?.toDouble() ?? 0.0;
-        final totalTimeMs = (jsonResponse['total_time_ms'] as num?)?.toDouble() ?? 0.0;
-        final tokensPerSecond = (jsonResponse['tokens_per_second'] as num?)?.toDouble() ?? 0.0;
+            (jsonResponse['response'] as String?) ??
+            responseText;
+        final timeToFirstTokenMs =
+            (jsonResponse['time_to_first_token_ms'] as num?)?.toDouble() ?? 0.0;
+        final totalTimeMs =
+            (jsonResponse['total_time_ms'] as num?)?.toDouble() ?? 0.0;
+        final tokensPerSecond =
+            (jsonResponse['tokens_per_second'] as num?)?.toDouble() ?? 0.0;
 
         return CactusTranscriptionResult(
-          success: success,
-          // [TEMP] Clean up special tokens from the text
-          text: text.trim().replaceAll('<|startoftranscript|>', ''),
-          timeToFirstTokenMs: timeToFirstTokenMs,
-          totalTimeMs: totalTimeMs,
-          tokensPerSecond: tokensPerSecond
-        );
+            success: success,
+            // [TEMP] Clean up special tokens from the text
+            text: text.trim().replaceAll('<|startoftranscript|>', ''),
+            timeToFirstTokenMs: timeToFirstTokenMs,
+            totalTimeMs: totalTimeMs,
+            tokensPerSecond: tokensPerSecond);
       } catch (e) {
         debugPrint('Unable to parse the transcription response json: $e');
         return CactusTranscriptionResult(
@@ -403,12 +435,14 @@ class CactusContext {
       if (i > 0) messagesJsonBuffer.write(',');
       messagesJsonBuffer.write('{');
       messagesJsonBuffer.write('"role":"${messages[i].role}",');
-      messagesJsonBuffer.write('"content":"${_escapeJsonString(messages[i].content)}"');
+      messagesJsonBuffer
+          .write('"content":"${_escapeJsonString(messages[i].content)}"');
       if (messages[i].images.isNotEmpty) {
         messagesJsonBuffer.write(',"images":[');
         for (int j = 0; j < messages[i].images.length; j++) {
           if (j > 0) messagesJsonBuffer.write(',');
-          messagesJsonBuffer.write('"${_escapeJsonString(messages[i].images[j])}"');
+          messagesJsonBuffer
+              .write('"${_escapeJsonString(messages[i].images[j])}"');
         }
         messagesJsonBuffer.write(']');
       }
@@ -419,16 +453,25 @@ class CactusContext {
 
     // Prepare options JSON
     final optionsJsonBuffer = StringBuffer('{');
-    params.temperature != null ? optionsJsonBuffer.write('"temperature":${params.temperature},') : null;
-    params.topK != null ? optionsJsonBuffer.write('"top_k":${params.topK},') : null;
-    params.topP != null ? optionsJsonBuffer.write('"top_p":${params.topP},') : null;
-    params.forceTools != null ? optionsJsonBuffer.write('"force_tools":${params.forceTools},') : null;
+    params.temperature != null
+        ? optionsJsonBuffer.write('"temperature":${params.temperature},')
+        : null;
+    params.topK != null
+        ? optionsJsonBuffer.write('"top_k":${params.topK},')
+        : null;
+    params.topP != null
+        ? optionsJsonBuffer.write('"top_p":${params.topP},')
+        : null;
+    params.forceTools != null
+        ? optionsJsonBuffer.write('"force_tools":${params.forceTools},')
+        : null;
     optionsJsonBuffer.write('"max_tokens":${params.maxTokens}');
     if (params.stopSequences.isNotEmpty) {
       optionsJsonBuffer.write(',"stop_sequences":[');
       for (int i = 0; i < params.stopSequences.length; i++) {
         if (i > 0) optionsJsonBuffer.write(',');
-        optionsJsonBuffer.write('"${_escapeJsonString(params.stopSequences[i])}"');
+        optionsJsonBuffer
+            .write('"${_escapeJsonString(params.stopSequences[i])}"');
       }
       optionsJsonBuffer.write(']');
     }
@@ -448,7 +491,8 @@ class CactusContext {
     };
   }
 
-  static Future<(int?, String)> initContext(String modelPath, int contextSize) async {
+  static Future<(int?, String)> initContext(
+      String modelPath, int contextSize) async {
     // Run the heavy initialization in an isolate using compute
     final isolateParams = {
       'modelPath': modelPath,
@@ -477,11 +521,10 @@ class CactusContext {
   }
 
   static Future<CactusCompletionResult> completion(
-    int handle,
-    List<ChatMessage> messages,
-    CactusCompletionParams params,
-    int quantization
-  ) async {
+      int handle,
+      List<ChatMessage> messages,
+      CactusCompletionParams params,
+      int quantization) async {
     final jsonData = _prepareCompletionJson(messages, params);
 
     return await compute(_completionInIsolate, {
@@ -496,11 +539,10 @@ class CactusContext {
   }
 
   static CactusStreamedCompletionResult completionStream(
-    int handle,
-    List<ChatMessage> messages,
-    CactusCompletionParams params,
-    int quantization
-  ) {
+      int handle,
+      List<ChatMessage> messages,
+      CactusCompletionParams params,
+      int quantization) {
     final jsonData = _prepareCompletionJson(messages, params);
 
     final controller = StreamController<String>();
@@ -551,7 +593,8 @@ class CactusContext {
     );
   }
 
-  static Future<CactusEmbeddingResult> generateEmbedding(int handle, String text, int quantization) async {
+  static Future<CactusEmbeddingResult> generateEmbedding(
+      int handle, String text, int quantization) async {
     return await compute(_generateEmbeddingInIsolate, {
       'handle': handle,
       'text': text,
@@ -601,7 +644,7 @@ class CactusContext {
         final type = message['type'] as String;
         if (type == 'token') {
           final token = message['data'] as String;
-          if(!transcriptionParams.stopSequences.contains(token)) {
+          if (!transcriptionParams.stopSequences.contains(token)) {
             controller.add(token);
           }
         } else if (type == 'result') {
@@ -642,7 +685,8 @@ class CactusContext {
     );
   }
 
-  static Future<void> _isolateCompletionEntry(Map<String, dynamic> params) async {
+  static Future<void> _isolateCompletionEntry(
+      Map<String, dynamic> params) async {
     final replyPort = params['replyPort'] as SendPort;
     try {
       final result = await _completionInIsolate(params);
@@ -656,7 +700,8 @@ class CactusContext {
     }
   }
 
-  static Future<void> _isolateTranscriptionEntry(Map<String, dynamic> params) async {
+  static Future<void> _isolateTranscriptionEntry(
+      Map<String, dynamic> params) async {
     final replyPort = params['replyPort'] as SendPort;
     try {
       final result = await _transcribeInIsolate(params);

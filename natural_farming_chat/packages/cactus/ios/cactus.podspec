@@ -12,9 +12,20 @@ A Flutter plugin for Cactus Utilities, providing access to native Cactus functio
   s.source           = { :path => '.' }
 
   s.dependency 'Flutter'
-  s.platform = :ios, '13.0'
+  s.platform = :ios, '16.4'
   s.swift_version = '5.0'
-  s.vendored_frameworks = 'cactus.xcframework', 'cactus_util.xcframework'
+
+  # CocoaPods stages all XCFrameworks in a pod under the pod name. Keeping
+  # these in separate subspecs gives each native framework its own staging
+  # directory; otherwise the second rsync can delete the first framework.
+  s.subspec 'Core' do |core|
+    core.vendored_frameworks = 'cactus.xcframework'
+  end
+
+  s.subspec 'Util' do |util|
+    util.vendored_frameworks = 'cactus_util.xcframework'
+  end
+
   s.frameworks = 'Accelerate', 'Foundation', 'Metal', 'MetalKit'
 
   s.pod_target_xcconfig = {

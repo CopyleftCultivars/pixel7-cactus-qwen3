@@ -1,5 +1,5 @@
 # CocoaPods remains the dependency manager for the local Cactus FFI plugin.
-platform :ios, '13.0'
+platform :ios, '16.4'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 

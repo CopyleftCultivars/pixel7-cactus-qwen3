@@ -19,6 +19,10 @@ final cactusInit = cactusLib
     .lookup<NativeFunction<CactusInitNative>>('cactus_init')
     .asFunction<CactusInitDart>();
 
+final cactusSetBackend = cactusLib
+    .lookup<NativeFunction<CactusSetBackendNative>>('cactus_set_backend')
+    .asFunction<CactusSetBackendDart>();
+
 final cactusComplete = cactusLib
     .lookup<NativeFunction<CactusCompleteNative>>('cactus_complete')
     .asFunction<CactusCompleteDart>();
@@ -47,14 +51,16 @@ final cactusLogSetLevel = cactusLib
     .lookup<NativeFunction<Void Function(Int32)>>('cactus_log_set_level')
     .asFunction<void Function(int)>();
 
-final DynamicLibrary cactusUtil = DynamicLibrary.open(_getLibraryPath('cactus_util'));
+final DynamicLibrary cactusUtil =
+    DynamicLibrary.open(_getLibraryPath('cactus_util'));
 
 final registerApp = cactusUtil
     .lookup<NativeFunction<RegisterAppNative>>('register_app')
     .asFunction<RegisterAppDart>();
 
 final setAndroidDataDirectory = cactusUtil
-    .lookup<NativeFunction<Void Function(Pointer<Utf8>)>>('set_android_data_directory')
+    .lookup<NativeFunction<Void Function(Pointer<Utf8>)>>(
+        'set_android_data_directory')
     .asFunction<void Function(Pointer<Utf8>)>();
 
 final getDeviceId = cactusUtil

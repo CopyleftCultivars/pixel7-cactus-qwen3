@@ -1,0 +1,48 @@
+workflows:
+  ios-adhoc-release:
+    name: Natural Farming Chat iOS Ad Hoc fallback build
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    working_directory: natural_farming_chat
+
+    # Create this App Store Connect API key integration in Codemagic before
+    # triggering the workflow. The name must match the integration name.
+    integrations:
+      app_store_connect: natural-farming-chat-app-store-connect
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.copyleftcultivars.naturalFarmingChat
+
+    # There is intentionally no triggering section. Start this fallback
+    # workflow manually when a local M4 build is unavailable.
+
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
+
+    scripts:
+      - name: Fetch Flutter packages
+        script: flutter pub get
+      - name: Install CocoaPods dependencies
+        script: pod install
+      - name: Analyze Dart code
+        script: flutter analyze --no-pub --no-fatal-infos lib test
+      - name: Run Flutter tests
+        script: flutter test
+      - name: Apply Codemagic signing profiles
+        script: xcode-project use-profiles
+      - name: Build signed iOS IPA
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - natural_farming_chat/build/ios/ipa/*.ipa
+      - natural_farming_chat/build/ios/archive/*.xcarchive
+      - /tmp/xcodebuild_logs/*.log
