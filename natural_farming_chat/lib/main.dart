@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:cactus/cactus.dart' as cactus;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'services/benchmark_server.dart';
 import 'services/model_service.dart';
 import 'services/plant_lookup_service.dart';
 import 'services/calculator_service.dart';
@@ -81,7 +80,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _messages = [];
 
   final ModelService _modelService = ModelService();
-  late final BenchmarkServer _benchmarkServer = BenchmarkServer(_modelService);
   final PlantLookupService _plantLookupService = PlantLookupService();
   final CalculatorService _calculatorService = CalculatorService();
   final RegionPlantService _regionPlantService = RegionPlantService();
@@ -155,9 +153,6 @@ class _ChatScreenState extends State<ChatScreen> {
           });
         },
       );
-
-      // Start Ollama-compatible benchmark server (port 11435) after model ready
-      await _benchmarkServer.start();
 
       // Get device info
       final deviceInfo = await _modelService.getDeviceInfo();

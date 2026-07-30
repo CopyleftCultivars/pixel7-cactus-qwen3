@@ -6,7 +6,7 @@ vision encoder is not needed. The output is a new directory with a filtered
 model.safetensors and an updated config.json with vision_config removed.
 
 Usage:
-    python3 finetune/strip_vision_encoder.py \
+    python3 conversion/strip_vision_encoder.py \
         --input  /path/to/gemma4-merged \
         --output /path/to/gemma4-text-only
 """

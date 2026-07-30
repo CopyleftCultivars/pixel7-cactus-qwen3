@@ -2,7 +2,7 @@ import 'package:objectbox/objectbox.dart';
 import 'document_chunk.dart';
 
 /// Document entity for storing source documents.
-/// Schema MUST match cactus_rag_preprocessor exactly for database portability.
+/// Schema MUST match the Cactus RAG implementation exactly for database portability.
 @Entity()
 class Document {
   @Id()

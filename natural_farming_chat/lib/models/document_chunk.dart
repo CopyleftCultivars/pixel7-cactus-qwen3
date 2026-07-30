@@ -2,7 +2,7 @@ import 'package:objectbox/objectbox.dart';
 import 'document.dart';
 
 /// DocumentChunk entity for storing chunked text with embeddings.
-/// Schema MUST match cactus_rag_preprocessor exactly for database portability.
+/// Schema MUST match the Cactus RAG implementation exactly for database portability.
 @Entity()
 class DocumentChunk {
   @Id()

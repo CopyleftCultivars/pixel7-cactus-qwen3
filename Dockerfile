@@ -74,6 +74,9 @@ WORKDIR /app
 # ---- Layer caching: dependency manifests first ----
 COPY natural_farming_chat/pubspec.yaml natural_farming_chat/pubspec.lock ./
 
+# The app uses the local Cactus plugin, so it must be present before pub get.
+COPY natural_farming_chat/packages/cactus/ ./packages/cactus/
+
 # Copy android build files needed for pub get and Gradle resolution
 COPY natural_farming_chat/android/ ./android/
 

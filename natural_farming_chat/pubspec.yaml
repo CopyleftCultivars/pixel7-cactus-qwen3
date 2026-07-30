@@ -43,11 +43,7 @@ dependencies:
   archive: ^4.0.7
   ffi: ^2.1.0
 
-  # HTTP server for Ollama-compatible benchmark endpoint
-  shelf: ^1.4.0
-  shelf_router: ^1.1.0
-
-  # ObjectBox for direct database access (same schema as preprocessor)
+  # ObjectBox for direct database access (same schema as the Cactus RAG implementation)
   objectbox: ^5.0.4
   objectbox_flutter_libs: ^5.0.4
   flat_buffers: ^23.5.26

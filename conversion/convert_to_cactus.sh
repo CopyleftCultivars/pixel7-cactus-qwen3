@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
 # convert_to_cactus.sh - Convert merged HuggingFace model to a runnable Cactus bundle.
 #
-# Clones cactus-compute/cactus (if not already present), installs the cactus
+# Clones cactus-compute/cactus (if not already present), uses the official cactus
 # Python package, then runs the official cactus CLI on the merged model. The
 # output includes CQ weights and runtime graph components.
 #
 # Usage:
-#   bash finetune/convert_to_cactus.sh [OPTIONS]
+#   bash conversion/convert_to_cactus.sh [OPTIONS]
 #
 # Options:
-#   --merged-model DIR    Path to merged HuggingFace model (default: finetune/outputs/merged-model)
-#   --output DIR          Output directory for the bundle (default: finetune/outputs/cact-model)
+#   --merged-model DIR    Path to merged HuggingFace model (default: models/merged-model)
+#   --output DIR          Output directory for the bundle (default: models/cactus-model)
 #   --bits N              Quantization bits: 1 | 2 | 3 | 4 (default: 4)
 #   --cache-context-length N  KV-cache length for mobile inference (default: 2048)
-#   --cactus-dir DIR      Where to clone/find the cactus repo (default: finetune/cactus-sdk)
+#   --cactus-dir DIR      Where to clone/find the cactus repo (default: conversion/cactus-sdk)
 #   -h, --help            Print this help and exit
 #
 # Example:
-#   bash finetune/convert_to_cactus.sh --bits 4 --cache-context-length 2048
+#   bash conversion/convert_to_cactus.sh --bits 4 --cache-context-length 2048
 
 set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-MERGED_MODEL="finetune/outputs/merged-model"
-OUTPUT_DIR="finetune/outputs/cact-model"
+MERGED_MODEL="models/merged-model"
+OUTPUT_DIR="models/cactus-model"
 BITS="4"
 CACHE_CONTEXT_LENGTH="2048"
-CACTUS_DIR="finetune/cactus-sdk"
+CACTUS_DIR="conversion/cactus-sdk"
 
 # ── Argument parsing ───────────────────────────────────────────────────────────
 usage() {
@@ -55,13 +55,13 @@ esac
 # ── Validate merged model exists ───────────────────────────────────────────────
 if [[ ! -d "$MERGED_MODEL" ]]; then
     echo "ERROR: Merged model directory not found: $MERGED_MODEL" >&2
-    echo "       Run finetune/merge_adapter.py first." >&2
+    echo "       Pass a completed Hugging Face checkpoint with --merged-model." >&2
     exit 1
 fi
 
 if ! ls "$MERGED_MODEL"/*.safetensors &>/dev/null; then
     echo "ERROR: No .safetensors files found in $MERGED_MODEL" >&2
-    echo "       Ensure merge_adapter.py completed successfully." >&2
+    echo "       Ensure the merged checkpoint is complete and contains safetensors files." >&2
     exit 1
 fi
 
@@ -131,5 +131,5 @@ for f in "${OUTPUT_FILES[@]}"; do
 done
 
 echo ""
-echo "==> Next step: upload $OUTPUT_DIR to HuggingFace via finetune/upload_to_hf.sh"
+echo "==> Next step: upload $OUTPUT_DIR to HuggingFace via conversion/upload_to_hf.sh"
 echo "    or deploy directly to your Flutter app via the Cactus SDK."
