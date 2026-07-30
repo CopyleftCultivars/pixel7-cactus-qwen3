@@ -1,16 +1,10 @@
-# natural_farming_chat
+# Natural Farming Chat
 
-A new Flutter project.
+Flutter application using the local Cactus plugin in packages/cactus.
 
-## Getting Started
+## Build
 
-This project is a starting point for a Flutter application.
+    flutter pub get
+    flutter build apk --release
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+On macOS, build an Apple target with flutter build ios --release or flutter build macos --release.

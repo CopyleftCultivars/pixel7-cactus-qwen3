@@ -2,23 +2,23 @@
 # upload_to_hf.sh - Zip and upload the converted cactus model to HuggingFace Hub.
 #
 # Usage:
-#   bash finetune/upload_to_hf.sh --repo YOUR_HF_USERNAME/your-repo-name
+#   bash conversion/upload_to_hf.sh --repo YOUR_HF_USERNAME/your-repo-name
 #
 # Prerequisites:
 #   conda activate cactus-convert  (or any env with huggingface_hub installed)
 #   huggingface-cli login          (run once to authenticate)
 #
 # Options:
-#   --model-dir DIR    Path to cact-model directory (default: finetune/outputs/cact-model)
+#   --model-dir DIR    Path to cact-model directory (default: models/cactus-model)
 #   --repo REPO        HuggingFace repo in format username/repo-name (required)
-#   --filename NAME    Zip filename to upload (default: qwen3-nf-finetuned.zip)
+#   --filename NAME    Zip filename to upload (default: cactus-model.zip)
 #   -h, --help         Print this help and exit
 
 set -euo pipefail
 
-MODEL_DIR="finetune/outputs/cact-model"
+MODEL_DIR="models/cactus-model"
 HF_REPO=""
-ZIP_FILENAME="qwen3-nf-finetuned.zip"
+ZIP_FILENAME="cactus-model.zip"
 TMP_ZIP="/tmp/$ZIP_FILENAME"
 
 usage() {
@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$HF_REPO" ]]; then
-    echo "ERROR: --repo is required (e.g. --repo yourname/qwen3-nf-finetuned)" >&2
+    echo "ERROR: --repo is required (e.g. --repo yourname/cactus-model)" >&2
     exit 1
 fi
 

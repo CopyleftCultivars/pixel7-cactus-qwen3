@@ -12,7 +12,7 @@ import 'embedding_service.dart';
 /// Service for managing RAG (Retrieval-Augmented Generation) operations
 /// using direct ObjectBox access with a pre-built database.
 ///
-/// This uses the same ObjectBox schema as cactus_rag_preprocessor to ensure
+/// This uses the same ObjectBox schema as the Cactus RAG implementation to ensure
 /// database compatibility with pre-computed embeddings.
 class RagService {
   Store? _store;

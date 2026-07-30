@@ -503,7 +503,7 @@ Make multiple iterations if necessary.''';
 
   /// Generate a raw completion with an optional custom system prompt.
   ///
-  /// Used by the benchmark HTTP server so evaluation harnesses can supply
+  /// Used by the app so callers can supply
   /// their own system prompt (e.g. "Answer with only A/B/C/D").
   Future<String> generateRaw({
     required String prompt,

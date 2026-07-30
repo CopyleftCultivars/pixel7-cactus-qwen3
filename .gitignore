@@ -10,6 +10,11 @@ env/
 
 # Large model files (download separately)
 /models/
+benchmark/
+cactus_rag_preprocessor/
+finetune/
+data/
+vector_store/
 natural_farming_chat/models/
 *.gguf
 
@@ -19,21 +24,14 @@ natural_farming_chat/models/
 build/
 .flutter-plugins-dependencies
 
-# ObjectBox preprocessor build artifacts
-cactus_rag_preprocessor/.dart_tool/
-cactus_rag_preprocessor/download/
-cactus_rag_preprocessor/objectbox_output/
-cactus_rag_preprocessor/lib/libobjectbox.so
-
-# Pre-built RAG database (regenerate with preprocessor)
+# Pre-built RAG database and model files
 natural_farming_chat/assets/rag_db/
+models/
+conversion/cactus-sdk/
+conversion/outputs/
+*.cact
+*.weights
 
-# Precomputed embeddings
-precomputed_embeddings/
-
-# Generated data
-vector_store/
-data/
 
 # === IDE / Editor ===
 .idea/
@@ -44,15 +42,8 @@ data/
 .DS_Store
 Thumbs.db
 
-# Fine-tuning pipeline generated/downloaded artifacts
-finetune/weights/
-finetune/outputs/
-finetune/data/
-# Merged model (large binary — stored on HuggingFace)
-finetune/merged-model/
-finetune/merged-model.zip
-# Cactus SDK (7GB — clone separately from https://github.com/cactus-compute/cactus)
-finetune/cactus-sdk/
+# Flutter and Gradle generated artifacts
+.gradle/
 
 # === Local tooling (not needed for rebuild) ===
 .claude/
@@ -65,3 +56,13 @@ unsloth_compiled_cache
 MCQ_DIAGNOSTIC_PLAN.md
 wiki/
 flake.lock
+
+# Generated Flutter platform metadata
+**/local.properties
+**/ephemeral/
+**/Generated.xcconfig
+**/GeneratedPluginRegistrant.java
+**/GeneratedPluginRegistrant.h
+**/GeneratedPluginRegistrant.m
+**/flutter_export_environment.sh
+natural_farming_chat/packages/cactus/example/pubspec.lock
