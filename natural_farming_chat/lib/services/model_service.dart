@@ -17,15 +17,18 @@ class ModelService {
   /// Default maximum tokens for completions (increased from 512 to prevent truncation)
   static const int defaultMaxTokens = 2048;
 
-  // Cactus INT4 bundle converted from the v5 Qwen3 checkpoint. The `-ios`
-  // bundle is the transpiled component format (components/manifest.json)
-  // required by the Cactus SDK v2.0 Apple engine; the older weights-only bundle
-  // failed to initialize on iOS. Hosted on GitHub Releases for fast, consistent
-  // download (the Hugging Face Xet CDN throttles this file partway through).
-  static const String modelSlug = 'qwen3-nf-v5-cact-int4-ios';
+  // Cactus INT4 bundle converted from the distill-v2-rationale checkpoint
+  // (promoted champion, chainlink #163 -- beat v5clean +5.7pp on-device on
+  // the natural_fertilizers MCQ ladder, 0.8381 vs 0.7810). Calibrated GPTQ-
+  // Hessian conversion (chainlink #165); the transpiled component format
+  // (components/manifest.json) required by the Cactus SDK v2.0 engine.
+  // Hosted on HuggingFace (previously moved to GitHub Releases after the HF
+  // Xet CDN was found throttling downloads for the v5 bundle -- moved back
+  // per owner's request; re-verify download behavior before relying on this).
+  static const String modelSlug = 'qwen3-nf-distill-v2-cact-int4-ios';
 
   static const String _modelDownloadUrl =
-      'https://github.com/CopyleftCultivars/pixel7-cactus-qwen3/releases/download/qwen3-nf-v5-cact-int4-ios/qwen3-nf-v5-cact-int4-ios.zip';
+      'https://huggingface.co/CopyleftCultivars/localNFchatbot-cactus/resolve/main/qwen3-distill-v2-calibrated-cact-int4-ios.zip';
   static const String systemPrompt = '''
 You are a helpful farming assistant specializing in natural farming practices.
 Answer questions based on the provided context. If you don't know the answer,
