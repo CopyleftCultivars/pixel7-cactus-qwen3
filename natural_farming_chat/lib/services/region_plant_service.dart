@@ -126,6 +126,20 @@ class RegionPlantService {
     return _entries.map((e) => e.country).toSet().toList()..sort();
   }
 
+  /// All known country + region names, for vocabulary-based argument
+  /// extraction (`ToolArgExtractor`, chainlink #177's on-device ladder
+  /// harness) -- mirrors `rlm_slice/multi_tool_context.py`'s
+  /// `_region_vocab()` (there, a single "Location" string per entry; here,
+  /// country and region are already separate fields, so both are included).
+  List<String> get locationTerms {
+    final terms = <String>{};
+    for (final e in _entries) {
+      terms.add(e.country);
+      if (e.region != null) terms.add(e.region!);
+    }
+    return terms.toList();
+  }
+
   /// Reverse lookup: which regions grow a named crop/plant (chainlink #177's
   /// `regional_recipe_lookup` tool needs this in addition to the existing
   /// forward `findRegions` -- "given a location, what grows there"; this is

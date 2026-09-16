@@ -32,6 +32,15 @@ class PlantLookupService {
   /// numeric mineral data, not `lookup()`'s pre-formatted display string).
   Map<String, Map<String, dynamic>> get byCommonName => _byCommonName;
 
+  /// All known plant common + scientific names, for vocabulary-based
+  /// argument extraction (`ToolArgExtractor`, chainlink #177's on-device
+  /// ladder harness) -- mirrors `rlm_slice/multi_tool_context.py`'s
+  /// `_plant_vocab()`.
+  List<String> get allPlantNames => {
+        ..._byCommonName.values.map((p) => p['common_name'] as String?),
+        ..._byScientificName.values.map((p) => p['scientific_name'] as String?),
+      }.whereType<String>().where((s) => s.trim().isNotEmpty).toList();
+
   /// Load plant mineral profiles from bundled JSON asset.
   Future<void> initialize({
     void Function(double progress, String status)? onProgress,

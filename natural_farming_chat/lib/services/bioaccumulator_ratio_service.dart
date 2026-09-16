@@ -42,6 +42,16 @@ class BioaccumulatorRatioService {
   bool get isInitialized => _isInitialized;
   int get cropCount => _crops.length;
 
+  /// All known crop names, for vocabulary-based argument extraction
+  /// (`ToolArgExtractor`, chainlink #177's on-device ladder harness) --
+  /// mirrors `rlm_slice/multi_tool_context.py`'s `_crop_vocab()`.
+  List<String> get cropNames => _crops
+      .map((row) => row['Crop'] as String?)
+      .whereType<String>()
+      .where((s) => s.trim().isNotEmpty)
+      .toSet()
+      .toList();
+
   /// Load crop NPK requirements from the bundled JSON asset.
   Future<void> initialize({
     void Function(double progress, String status)? onProgress,
