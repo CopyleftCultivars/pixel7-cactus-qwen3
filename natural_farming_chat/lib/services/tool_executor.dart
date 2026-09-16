@@ -1,24 +1,33 @@
 import 'package:cactus/cactus.dart' show ToolCall;
 
+import 'bioaccumulator_ratio_service.dart';
 import 'calculator_service.dart';
 import 'fertilizer_formulation_service.dart';
 import 'plant_lookup_service.dart';
+import 'recipe_lookup_service.dart';
 
 /// Service for executing tool calls requested by the LLM.
 /// Dispatches tool calls to appropriate handlers (plant lookups, calculations,
-/// and fertilizer formulations).
+/// fertilizer formulations, and the two domain tools from chainlink #177:
+/// bioaccumulator ratio and regional/recipe lookup).
 class ToolExecutor {
   final PlantLookupService _plantLookupService;
   final CalculatorService _calculatorService;
   final FertilizerFormulationService _formulationService;
+  final BioaccumulatorRatioService? _bioaccumulatorRatioService;
+  final RecipeLookupService? _recipeLookupService;
 
   ToolExecutor({
     required PlantLookupService plantLookupService,
     required CalculatorService calculatorService,
     required FertilizerFormulationService formulationService,
+    BioaccumulatorRatioService? bioaccumulatorRatioService,
+    RecipeLookupService? recipeLookupService,
   })  : _plantLookupService = plantLookupService,
         _calculatorService = calculatorService,
-        _formulationService = formulationService;
+        _formulationService = formulationService,
+        _bioaccumulatorRatioService = bioaccumulatorRatioService,
+        _recipeLookupService = recipeLookupService;
 
   /// Execute a tool call and return the result
   Future<ToolResult> execute(ToolCall toolCall) async {
@@ -35,6 +44,12 @@ class ToolExecutor {
         break;
       case 'local_fertilizer_plants':
         result = _executeFormulation(toolCall.arguments);
+        break;
+      case 'bioaccumulator_ratio':
+        result = _executeBioaccumulatorRatio(toolCall.arguments);
+        break;
+      case 'regional_recipe_lookup':
+        result = _executeRegionalRecipeLookup(toolCall.arguments);
         break;
       default:
         result = ToolResult(
@@ -138,6 +153,90 @@ class ToolExecutor {
         'location': location,
         'nutrient': nutrient,
         'region_matched': formulation.regionName,
+      },
+    );
+  }
+
+  /// Execute bioaccumulator ratio comparison using crop requirements +
+  /// plant mineral profile data (chainlink #177).
+  ToolResult _executeBioaccumulatorRatio(Map<String, String> arguments) {
+    final crop = arguments['crop'];
+    if (crop == null || crop.isEmpty) {
+      return ToolResult(
+        toolName: 'bioaccumulator_ratio',
+        success: false,
+        result: 'Missing required parameter: crop',
+      );
+    }
+
+    final candidatePlant = arguments['candidate_plant'];
+    if (candidatePlant == null || candidatePlant.isEmpty) {
+      return ToolResult(
+        toolName: 'bioaccumulator_ratio',
+        success: false,
+        result: 'Missing required parameter: candidate_plant',
+      );
+    }
+
+    if (_bioaccumulatorRatioService == null) {
+      return ToolResult(
+        toolName: 'bioaccumulator_ratio',
+        success: false,
+        result: 'Bioaccumulator ratio service not available',
+      );
+    }
+
+    final ratioResult = _bioaccumulatorRatioService.compute(crop, candidatePlant);
+
+    return ToolResult(
+      toolName: 'bioaccumulator_ratio',
+      success: ratioResult.success,
+      result: ratioResult.toMessage(),
+      metadata: {
+        'crop': crop,
+        'candidate_plant': candidatePlant,
+      },
+    );
+  }
+
+  /// Execute combined regional/recipe lookup (chainlink #177).
+  ToolResult _executeRegionalRecipeLookup(Map<String, String> arguments) {
+    final crop = arguments['crop'];
+    final region = arguments['region'];
+    final problem = arguments['problem'];
+
+    if ((crop == null || crop.isEmpty) &&
+        (region == null || region.isEmpty) &&
+        (problem == null || problem.isEmpty)) {
+      return ToolResult(
+        toolName: 'regional_recipe_lookup',
+        success: false,
+        result: 'At least one of crop, region, or problem is required',
+      );
+    }
+
+    if (_recipeLookupService == null) {
+      return ToolResult(
+        toolName: 'regional_recipe_lookup',
+        success: false,
+        result: 'Recipe lookup service not available',
+      );
+    }
+
+    final lookupResult = _recipeLookupService.lookup(
+      crop: crop,
+      region: region,
+      problem: problem,
+    );
+
+    return ToolResult(
+      toolName: 'regional_recipe_lookup',
+      success: lookupResult.success,
+      result: lookupResult.toMessage(),
+      metadata: {
+        if (crop != null) 'crop': crop,
+        if (region != null) 'region': region,
+        if (problem != null) 'problem': problem,
       },
     );
   }

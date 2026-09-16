@@ -126,6 +126,29 @@ class RegionPlantService {
     return _entries.map((e) => e.country).toSet().toList()..sort();
   }
 
+  /// Reverse lookup: which regions grow a named crop/plant (chainlink #177's
+  /// `regional_recipe_lookup` tool needs this in addition to the existing
+  /// forward `findRegions` -- "given a location, what grows there"; this is
+  /// "given a plant, where does it grow"). Mirrors
+  /// `rlm_slice/domain_tools.py`'s `regions_growing_crop` -- substring match
+  /// against each entry's plants' common/scientific/raw name, case-
+  /// insensitive. Returns display names (e.g. "California, USA").
+  List<String> regionsGrowingCrop(String crop) {
+    if (!_isInitialized) return [];
+    final cropL = crop.trim().toLowerCase();
+    if (cropL.isEmpty) return [];
+
+    final matches = <String>[];
+    for (final entry in _entries) {
+      final grows = entry.plants.any((p) =>
+          p.commonName.toLowerCase().contains(cropL) ||
+          p.scientificName.toLowerCase().contains(cropL) ||
+          p.raw.toLowerCase().contains(cropL));
+      if (grows) matches.add(entry.displayName);
+    }
+    return matches;
+  }
+
   /// Parse "Genus species (Common Name)" into a RegionPlant.
   /// Falls back gracefully if no parenthetical common name is present.
   static RegionPlant _parsePlantString(String raw) {

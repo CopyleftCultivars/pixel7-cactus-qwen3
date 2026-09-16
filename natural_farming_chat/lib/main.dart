@@ -8,6 +8,9 @@ import 'services/calculator_service.dart';
 import 'services/fertilizer_formulation_service.dart';
 import 'services/region_plant_service.dart';
 import 'services/tool_executor.dart';
+import 'services/bioaccumulator_ratio_service.dart';
+import 'services/recipe_lookup_service.dart';
+import 'services/embedding_service.dart';
 
 void main() {
   runApp(const NaturalFarmingChatApp());
@@ -83,6 +86,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final PlantLookupService _plantLookupService = PlantLookupService();
   final CalculatorService _calculatorService = CalculatorService();
   final RegionPlantService _regionPlantService = RegionPlantService();
+  late final BioaccumulatorRatioService _bioaccumulatorRatioService;
+  late final RecipeLookupService _recipeLookupService;
+  final EmbeddingService _embeddingService = EmbeddingService();
   late final FertilizerFormulationService _formulationService;
   late final ToolExecutor _toolExecutor;
 
@@ -102,10 +108,18 @@ class _ChatScreenState extends State<ChatScreen> {
       regionService: _regionPlantService,
       plantLookupService: _plantLookupService,
     );
+    _bioaccumulatorRatioService = BioaccumulatorRatioService(
+      plantLookupService: _plantLookupService,
+    );
+    _recipeLookupService = RecipeLookupService(
+      regionPlantService: _regionPlantService,
+    );
     _toolExecutor = ToolExecutor(
       plantLookupService: _plantLookupService,
       calculatorService: _calculatorService,
       formulationService: _formulationService,
+      bioaccumulatorRatioService: _bioaccumulatorRatioService,
+      recipeLookupService: _recipeLookupService,
     );
     _loadPersistedSettings();
     _initializeServices();
@@ -144,11 +158,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initializeServices() async {
     try {
-      // Initialize the chat model (70% of init)
+      // Initialize the chat model (45% of init)
       await _modelService.initialize(
         onProgress: (progress, status) {
           setState(() {
-            _initProgress = progress * 0.7;
+            _initProgress = progress * 0.45;
             _initStatus = status;
           });
         },
@@ -158,35 +172,87 @@ class _ChatScreenState extends State<ChatScreen> {
       final deviceInfo = await _modelService.getDeviceInfo();
       _deviceInfo = deviceInfo['device'] ?? 'Unknown';
 
-      // Initialize plant mineral database from bundled JSON (15% of init)
+      // Initialize plant mineral database from bundled JSON (8% of init)
       setState(() {
-        _initProgress = 0.7;
+        _initProgress = 0.45;
         _initStatus = 'Loading plant mineral database...';
       });
 
       await _plantLookupService.initialize(
         onProgress: (progress, status) {
           setState(() {
-            _initProgress = 0.7 + (progress * 0.15);
+            _initProgress = 0.45 + (progress * 0.08);
             _initStatus = status;
           });
         },
       );
 
-      // Initialize region plant database (15% of init)
+      // Initialize region plant database (8% of init)
       setState(() {
-        _initProgress = 0.85;
+        _initProgress = 0.53;
         _initStatus = 'Loading region plant database...';
       });
 
       await _regionPlantService.initialize(
         onProgress: (progress, status) {
           setState(() {
-            _initProgress = 0.85 + (progress * 0.15);
+            _initProgress = 0.53 + (progress * 0.08);
             _initStatus = status;
           });
         },
       );
+
+      // Initialize the two chainlink #177 domain-tool data sources (8% of init)
+      setState(() {
+        _initProgress = 0.61;
+        _initStatus = 'Loading crop requirements database...';
+      });
+
+      await _bioaccumulatorRatioService.initialize(
+        onProgress: (progress, status) {
+          setState(() {
+            _initProgress = 0.61 + (progress * 0.04);
+            _initStatus = status;
+          });
+        },
+      );
+
+      setState(() {
+        _initProgress = 0.65;
+        _initStatus = 'Loading enriched recipe database...';
+      });
+
+      await _recipeLookupService.initialize(
+        onProgress: (progress, status) {
+          setState(() {
+            _initProgress = 0.65 + (progress * 0.04);
+            _initStatus = status;
+          });
+        },
+      );
+
+      // Initialize the dedicated embedding model (31% of init) -- backs our
+      // own tool_router.dart (chainlink #177), NOT Cactus's native routing.
+      // If this fails for any reason, ModelService._routeTools fails open
+      // to the full tool list, so a failure here is non-fatal to the rest
+      // of app init; only log and continue.
+      setState(() {
+        _initProgress = 0.69;
+        _initStatus = 'Loading embedding model for tool routing...';
+      });
+
+      try {
+        await _embeddingService.initialize(
+          onProgress: (progress, status) {
+            setState(() {
+              _initProgress = 0.69 + (progress * 0.31);
+              _initStatus = status;
+            });
+          },
+        );
+      } catch (e) {
+        print('[TOOL_ROUTER] embedding model init failed, tool routing will fail open: $e');
+      }
 
       setState(() {
         _isInitialized = true;
@@ -287,6 +353,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final result = await _modelService.generateCompletionWithTools(
       question: question,
       conversationHistory: history,
+      embeddingService: _embeddingService,
     );
 
     print('[TOOL_DEBUG] hasToolCalls: ${result.hasToolCalls}');
@@ -346,6 +413,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.dispose();
     _scrollController.dispose();
     _modelService.dispose();
+    _embeddingService.dispose();
     super.dispose();
   }
 

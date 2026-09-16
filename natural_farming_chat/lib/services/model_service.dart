@@ -6,6 +6,9 @@ import 'package:cactus/cactus.dart';
 import 'package:ffi/ffi.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'embedding_service.dart';
+import 'tool_router.dart' as tool_router;
+
 /// Service for managing CactusLM model operations
 class ModelService {
   CactusLM? _lm;
@@ -92,6 +95,63 @@ say so honestly. Provide practical, actionable advice when possible.''';
                 '"phosphorus" (flowering/roots), "potassium" (fruiting), '
                 '"balanced", "vegetative", "flowering", "fruiting", or "seedling"',
             required: true,
+          ),
+        },
+      ),
+    ),
+    // Two domain tools ported from the GPU-side multi-tool epic (chainlink
+    // #174/#175/#177): bioaccumulator ratio calculation and combined
+    // regional/recipe lookup. #175's dual-relevant eval found injecting the
+    // right tool's content significantly improves MCQ accuracy over
+    // retrieval-alone (McNemar chi2=6.125, p<0.05).
+    CactusTool(
+      name: 'bioaccumulator_ratio',
+      description:
+          'Compare a crop\'s NPK requirement against a candidate bioaccumulator '
+          'plant\'s tissue mineral content (phosphorus and potassium only -- '
+          'nitrogen is never comparable). Returns a relative ratio, not a '
+          'calibrated fertilizer dosing formula, useful for judging whether a '
+          'plant is nutrient-dense enough to cut as green manure or steep into '
+          'a liquid feed.',
+      parameters: ToolParametersSchema(
+        properties: {
+          'crop': ToolParameter(
+            type: 'string',
+            description: 'Crop name, e.g. "Corn"',
+            required: true,
+          ),
+          'candidate_plant': ToolParameter(
+            type: 'string',
+            description:
+                'Candidate bioaccumulator plant common or scientific name, e.g. "Comfrey"',
+            required: true,
+          ),
+        },
+      ),
+    ),
+    CactusTool(
+      name: 'regional_recipe_lookup',
+      description:
+          'Look up candidate bioaccumulator plants native to a region and/or '
+          'matching Korean Natural Farming (KNF) / JADAM technique or recipe '
+          'for a crop or stated nutrient problem. At least one of crop, '
+          'region, or problem must be given.',
+      parameters: ToolParametersSchema(
+        properties: {
+          'crop': ToolParameter(
+            type: 'string',
+            description: 'Crop name, optional',
+            required: false,
+          ),
+          'region': ToolParameter(
+            type: 'string',
+            description: 'Region or location name, optional',
+            required: false,
+          ),
+          'problem': ToolParameter(
+            type: 'string',
+            description: 'Stated problem, e.g. "nitrogen deficiency", optional',
+            required: false,
           ),
         },
       ),
@@ -305,13 +365,14 @@ say so honestly. Provide practical, actionable advice when possible.''';
     String? context,
     List<CactusTool>? tools,
     List<ChatMessage>? conversationHistory,
+    EmbeddingService? embeddingService,
   }) async {
     if (!_isInitialized) {
       throw ModelServiceException('Model not initialized. Call initializeModel first.');
     }
 
     final systemContent = _buildSystemContentForTools(context);
-    final effectiveTools = tools ?? farmingTools;
+    final effectiveTools = tools ?? await _routeTools(question, embeddingService);
 
     print('[TOOL_DEBUG] generateCompletionWithTools called');
     print('[TOOL_DEBUG] Question: $question');
@@ -352,6 +413,53 @@ say so honestly. Provide practical, actionable advice when possible.''';
       tokensPerSecond: result.tokensPerSecond,
       toolCalls: result.toolCalls,
     );
+  }
+
+  /// Select which of [farmingTools] are relevant to `question`, using our
+  /// own query-based router (`tool_router.dart`, a faithful Dart port of
+  /// `qwen3-finetune/rlm_slice/tool_router.py`) -- NOT Cactus's own
+  /// `select_relevant_tools`/`ToolFilterService`, both of which are known-
+  /// weak and unused elsewhere in this app (chainlink #177 investigation).
+  ///
+  /// #175's dual-relevant eval found routed top-1 selection and inject-all-
+  /// viable statistically indistinguishable, so the exact top-k/threshold
+  /// here doesn't need fine-tuning. top-2 is used as a defensible default:
+  /// wide enough that a query relevant to a domain tool doesn't lose it to
+  /// an overly strict top-1 cut against the three original utility tools,
+  /// narrow enough to keep the now-5-tool list small for the 0.6B model
+  /// (which G9/#156 already found cannot reliably self-initiate tool calls
+  /// at all -- fewer, more relevant options matters more here than an
+  /// optimally-tuned k).
+  ///
+  /// Retrieval (`RagService`) is intentionally NOT part of this list --
+  /// it stays a separate, always-on step, mirroring how the GPU harness
+  /// kept `retrieve_rag_context` and `select_relevant_tools` as two
+  /// distinct mechanisms (see `multi_tool_context.py`'s docstring).
+  Future<List<CactusTool>> _routeTools(
+    String question,
+    EmbeddingService? embeddingService,
+  ) async {
+    if (embeddingService == null || !embeddingService.isInitialized) {
+      // No embedding model available to route with -- fail open to the
+      // full tool list rather than silently dropping tool access.
+      return farmingTools;
+    }
+
+    try {
+      final routing = await tool_router.selectRelevantTools(
+        question,
+        farmingTools,
+        embedFn: embeddingService.generateEmbedding,
+      );
+      final selectedNames = routing.selected(topK: 2).toSet();
+      final selected = farmingTools.where((t) => selectedNames.contains(t.name)).toList();
+      return selected.isEmpty ? farmingTools : selected;
+    } catch (e) {
+      // Routing is a refinement, not a requirement -- if embedding
+      // generation fails for any reason, fail open to the full tool list.
+      print('[TOOL_ROUTER] routing failed, falling back to full tool list: $e');
+      return farmingTools;
+    }
   }
 
   String _buildSystemContentForTools(String? context) {

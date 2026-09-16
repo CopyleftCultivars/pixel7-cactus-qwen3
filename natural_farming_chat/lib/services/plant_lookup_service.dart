@@ -27,6 +27,11 @@ class PlantLookupService {
   /// Access to scientific name index for cross-referencing by other services.
   Map<String, Map<String, dynamic>> get byScientificName => _byScientificName;
 
+  /// Access to common name index for cross-referencing by other services
+  /// (e.g. `BioaccumulatorRatioService`, which needs the raw per-part
+  /// numeric mineral data, not `lookup()`'s pre-formatted display string).
+  Map<String, Map<String, dynamic>> get byCommonName => _byCommonName;
+
   /// Load plant mineral profiles from bundled JSON asset.
   Future<void> initialize({
     void Function(double progress, String status)? onProgress,
