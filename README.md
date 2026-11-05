@@ -4,6 +4,11 @@ An Android app that runs a fine-tuned Qwen3-0.6B natural-farming model on the ph
 
 The newer Qwen3.5 recipe app is a separate repository: [`pixel7-cactus-qwen3.5`](https://github.com/CopyleftCultivars/pixel7-cactus-qwen3.5). Training lives in [`qwen3-finetune`](https://github.com/CopyleftCultivars/qwen3-finetune).
 
+## History
+
+This was the first attempt at running the model on an iPad as well as the Pixel 7. The iPad build did not work, so the iOS and macOS targets
+and the iOS CI workflow were removed; the repository is the Android (Pixel 7) app only.
+
 ## The model
 
 The app downloads its model on first launch (`lib/services/model_service.dart`): the calibrated Cactus int4 build of the **distill-v2-rationale** model (Qwen3-0.6B), from [`CopyleftCultivars/localNFchatbot-cactus`](https://huggingface.co/CopyleftCultivars/localNFchatbot-cactus) (`qwen3-distill-v2-calibrated-cact-int4-ios.zip`).
