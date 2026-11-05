@@ -130,6 +130,27 @@ for f in "${OUTPUT_FILES[@]}"; do
     echo "    $f  (${size_mb} MB)"
 done
 
+# ── #205 post-step: suppress reserved LPM token IDs at sampling ────────────────
+# The v2.1.0 engine reads `suppress_generation_token_ids` (top-level string) from
+# components/manifest.json and bans those IDs in the sampler. Emit the whole
+# reserved pool (lpm.config.RESERVED_ID_START..END = 151670..151935) so it does
+# not need re-emitting as more LPM personas are trained. Byte-minimal insert.
+if command -v python3 >/dev/null 2>&1; then
+    python3 - "$OUTPUT_DIR/components/manifest.json" <<'PYEOF'
+import sys
+path = sys.argv[1]
+ids = ",".join(str(i) for i in range(151670, 151936))
+raw = open(path, encoding="utf-8").read()
+if '"suppress_generation_token_ids"' not in raw:
+    brace = raw.index("{")
+    raw = raw[: brace + 1] + "\n  \"suppress_generation_token_ids\": \"" + ids + "\",\n" + raw[brace + 2 :]
+    open(path, "w", encoding="utf-8").write(raw)
+print("==> suppress_generation_token_ids: 266 reserved ids emitted")
+PYEOF
+else
+    echo "WARNING: python3 not found; manifest will not suppress reserved IDs" >&2
+fi
+
 echo ""
 echo "==> Next step: upload $OUTPUT_DIR to HuggingFace via conversion/upload_to_hf.sh"
 echo "    or deploy directly to your Flutter app via the Cactus SDK."
